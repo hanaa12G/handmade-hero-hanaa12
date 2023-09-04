@@ -1,0 +1,19 @@
+set nocompatible
+set autoindent smartindent tabstop=2 shiftwidth=2 expandtab
+set cursorline
+
+function BuildToScratchBuffer()
+  if bufexists('BuildResult') == 1
+    :vertical sbuffer BuildResult "Find existing buffer
+    :setlocal buftype=nofile bufhidden=hide noswapfile
+    :normal ggdG "Clear previous content
+  else
+    :vsplit BuildResult " Or create new one if not exist
+    :setlocal buftype=nofile bufhidden=hide noswapfile 
+  endif
+  :read !call misc\build.bat
+endfunction
+
+let mapleader='`'
+nmap <leader>b :call BuildToScratchBuffer()<Cr>
+

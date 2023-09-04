@@ -1,0 +1,49 @@
+Day1:
+
+
+command prompt:
+subst : fake a drive to put project root
+
+win32_handmade.cpp : main file 
+WinMain msdn
+
+.bat file to build program
+PATH: to find cl.exe
+vcvarsall.bat to set up environments variables
+
+modify shortcut to run our shell setup scripts
+
+/handmade/code
+/handmade/misc
+
+
+Day2: Opening win32 window
+
+WNDCLASS
+  try declare one and inspect with debugger before/after it initialize
+  .style, .lpfnProc, hInstanc, lpszCLassName
+
+
+Device context: classDC, ownDC
+
+Messages:
+WM_SIZE, WM_DESTROY, WM_CLOSE, WM_ACTIVATEAPP
+
+OutputDebugStringA()
+
+RegisterClass()
+CreateWindow()
+HandleMessage()
+
+
+WM_PAINT BeginPaint, EndPaint, DC
+
+Day4: Draw in back buffer
+
+- Don't need to store BitMapHandle, DeviceContext anymore
+- Virtuall alloc to alloc memory for the drawing buffer using biWidth, biHeight, biPlanes, biBitCount
+- StretchDIBits: Don't use X, Y, Width, Height, Use WindowWidth, and BUfferWidth, etc. 
+- TopDown bitmap in BitmapInfo
+- RGB byte order
+- RenderWeirdRectangle()
+- PeekMessage
