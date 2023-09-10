@@ -1,9 +1,51 @@
 #include <windows.h>
 #include <cstdint>
 #include <cassert>
+
+#include <xinput.h>
+
 #define global_variable static
 #define local_persist   static
 #define internal_func        static
+
+#define X_INPUT_GET_STATE(name) DWORD WINAPI name (DWORD dwUserIndex, XINPUT_STATE* pState)
+typedef X_INPUT_GET_STATE(x_input_get_state);
+X_INPUT_GET_STATE(XInputGetStateStub)
+{
+  return 0;
+}
+
+#define X_INPUT_SET_STATE(name) DWORD WINAPI name (DWORD dwUserIndex, XINPUT_VIBRATION* pVibration)
+typedef X_INPUT_SET_STATE(x_input_set_state);
+X_INPUT_SET_STATE(XInputSetStateStub)
+{
+  return 0;
+}
+
+#define XInputGetState XInputGetState_
+#define XInputSetState XInputSetState_
+global_variable x_input_get_state* XInputGetState = &XInputGetStateStub;
+global_variable x_input_set_state* XInputSetState = &XInputSetStateStub;
+
+internal_func void
+LoadXInputDll()
+{
+  local_persist const wchar_t DllName [] = L"xinput1_4.dll";
+
+  HMODULE Handle = LoadLibraryW(L"xinput1_4.dll");
+  if (Handle != NULL)
+  {
+    XInputGetState = (x_input_get_state*) GetProcAddress(Handle, "XInputGetState");
+    XInputSetState = (x_input_set_state*) GetProcAddress(Handle, "XInputSetState");
+  }
+  else
+  {
+    OutputDebugStringW(L"Can't load ");
+    OutputDebugStringW(DllName);
+    OutputDebugStringW(L"\n");
+  }
+}
+
 
 global_variable bool       Win32AppIsRunning;
 global_variable int        BytesPerPixel = 4;
@@ -13,7 +55,7 @@ struct win32_offscreen_buffer
   BITMAPINFO BitMapInfo;
   int        Width;
   int        Height;
-  void*   Data;
+  void*      Data;
 };
 
 struct win32_window_size
@@ -138,6 +180,74 @@ Win32WindowProc(HWND Window,
       int Height = ClientRect.bottom - ClientRect.top;
       Win32ResizeDIBSection(&ApplicationData->Buffer, X, Y, Width, Height);
     } break;
+
+    case WM_SYSKEYDOWN:
+    case WM_SYSKEYUP:
+    case WM_KEYDOWN:
+    case WM_KEYUP:
+    {
+      uint8_t VKeyCode = WParam;
+      bool WasKeyDown  = (LParam & (1 << 30)) != 0; 
+      bool IsKeyDown   = (LParam & (1 << 31)) == 0;
+
+      if (WasKeyDown != IsKeyDown)
+      {
+        switch (VKeyCode)
+        {
+          case VK_UP:
+            {
+              OutputDebugStringW(L"VK_UP\n");
+            } break;
+          case VK_DOWN:
+            {
+              OutputDebugStringW(L"VK_DOWN\n");
+            } break;
+          case VK_LEFT:
+            {
+              OutputDebugStringW(L"VK_LEFT\n");
+            } break;
+          case VK_RIGHT:
+            {
+              OutputDebugStringW(L"VK_RIGHT\n");
+            } break;
+          case VK_SPACE:
+            {
+              OutputDebugStringW(L"VK_SPACE\n");
+            } break;
+          case VK_ESCAPE:
+            {
+              OutputDebugStringW(L"VK_ESCAPE\n");
+            } break;
+          case 'W':
+            {
+              OutputDebugStringW(L"W\n");
+            } break;
+          case 'A':
+            {
+              OutputDebugStringW(L"A\n");
+            } break;
+          case 'S':
+            {
+              OutputDebugStringW(L"S\n");
+            } break;
+          case 'D':
+            {
+              OutputDebugStringW(L"D\n");
+            } break;
+          case 'Q':
+            {
+              OutputDebugStringW(L"Q\n");
+            } break;
+          case 'E':
+            {
+              OutputDebugStringW(L"E\n");
+            } break;
+          default:
+            {
+            } break;
+        }
+      }
+    } break;
     case WM_CLOSE:
     {
       Win32AppIsRunning = false;
@@ -171,6 +281,7 @@ int wWinMain(HINSTANCE hInstance,
   LPWSTR     lpCmdLine,
   int       nShowCmd)
 {
+  LoadXInputDll();
   win32_application_data ApplicationData = {};
 
   WNDCLASSEXW WindowClass = {};
@@ -225,6 +336,36 @@ int wWinMain(HINSTANCE hInstance,
       {
         Win32AppIsRunning = false;
       }
+    }
+
+    for (int ControllerIndex = 0; ControllerIndex < XUSER_MAX_COUNT; ++ControllerIndex)
+    {
+      XINPUT_STATE ControllerState = {};
+      if (XInputGetState(ControllerIndex, &ControllerState) != ERROR_SUCCESS)
+      {
+        continue;
+      }
+
+      XINPUT_GAMEPAD* Pad = &ControllerState.Gamepad;
+
+      bool Up    = Pad->wButtons & XINPUT_GAMEPAD_DPAD_UP;
+      bool Down  = Pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
+      bool Left  = Pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
+      bool Right = Pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
+
+      bool Start = Pad->wButtons & XINPUT_GAMEPAD_START;
+      bool Back  = Pad->wButtons & XINPUT_GAMEPAD_BACK;
+
+      bool LeftShoulder  = Pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
+      bool RightShoulder = Pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
+
+      bool AButton = Pad->wButtons & XINPUT_GAMEPAD_A;
+      bool BButton = Pad->wButtons & XINPUT_GAMEPAD_B;
+      bool XButton = Pad->wButtons & XINPUT_GAMEPAD_X;
+      bool YButton = Pad->wButtons & XINPUT_GAMEPAD_Y;
+
+      int16_t StickX = Pad->sThumbLX;
+      int16_t StickY = Pad->sThumbLY;
     }
 
 

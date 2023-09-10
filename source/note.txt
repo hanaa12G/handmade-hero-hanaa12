@@ -53,3 +53,10 @@ Day 5: XInput
 Make common function: Get Window dimension
 xinput.h
 xinputgetstate
+LoadxInput dynamically  
+  - define x_input_get_state function pointer
+  - define x_input_set_state function pointer
+Create XInputGetStateStub
+-LoadLibrary, GetProcAddress
+-vk_keyup, vk_keydown, vk_syskeyup, vksyskeydown
+- Virtual Key Code Lising, WasDown
