@@ -47,3 +47,9 @@ Day4: Draw in back buffer
 - RGB byte order
 - RenderWeirdRectangle()
 - PeekMessage
+
+
+Day 5: XInput
+Make common function: Get Window dimension
+xinput.h
+xinputgetstate

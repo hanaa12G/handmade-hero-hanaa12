@@ -6,24 +6,39 @@
 #define internal_func        static
 
 global_variable bool       Win32AppIsRunning;
-global_variable BITMAPINFO BitMapInfo;
-global_variable int        ScreenWidth;
-global_variable int        ScreenHeight;
-global_variable void*      BitMapMemory;
+global_variable int        BytesPerPixel = 4;
+
+struct win32_offscreen_buffer
+{
+  BITMAPINFO BitMapInfo;
+  int        Width;
+  int        Height;
+  void*   Data;
+};
+
+struct win32_window_size
+{
+  int Width;
+  int Height;
+};
+
+struct win32_application_data
+{
+  win32_offscreen_buffer Buffer;
+};
 
 
 internal_func void
-RenderWeirdRectangle(int XOffset, int YOffset)
+RenderWeirdRectangle(win32_offscreen_buffer* Buffer, int XOffset, int YOffset)
 {
-  int BytesPerPixel = 4;
-  uint8_t* Rows = (uint8_t*) BitMapMemory;
+  uint8_t* Rows = (uint8_t*) Buffer->Data;
   for (int Y = 0;
-       Y < ScreenHeight;
+       Y < Buffer->Height;
        ++Y)
   {
     uint32_t* Pixel = (uint32_t*) Rows;
     for (int X = 0;
-         X < ScreenWidth;
+         X < Buffer->Width;
          ++X)
     {
       /*
@@ -38,42 +53,43 @@ RenderWeirdRectangle(int XOffset, int YOffset)
 
     }
 
-    Rows += BytesPerPixel * ScreenWidth;
+    Rows += BytesPerPixel * Buffer->Width;
   }
 }
 
 
 internal_func void
-Win32ResizeDIBSection(int X, int Y, int Width, int Height)
+Win32ResizeDIBSection(win32_offscreen_buffer* Buffer, int X, int Y, int Width, int Height)
 {
-  if (BitMapMemory)
+  if (Buffer->Data)
   {
-    VirtualFree(BitMapMemory, 0, MEM_RELEASE);
+    VirtualFree(Buffer->Data, 0, MEM_RELEASE);
+    Buffer->Data = NULL;
   }
 
-  int BytesPerPixel = 4;
   int BitsPerPixel = 32;
-  ScreenWidth = Width;
-  ScreenHeight = Height;
+  Buffer->Width = Width;
+  Buffer->Height = Height;
 
-  BitMapInfo.bmiHeader.biSize   = sizeof(BitMapInfo.bmiHeader);
-  BitMapInfo.bmiHeader.biWidth  = ScreenWidth;
-  BitMapInfo.bmiHeader.biHeight = -ScreenHeight;
-  BitMapInfo.bmiHeader.biPlanes  = 1;
-  BitMapInfo.bmiHeader.biBitCount = BitsPerPixel;
-  BitMapInfo.bmiHeader.biCompression = BI_RGB;
+  Buffer->BitMapInfo.bmiHeader.biSize   = sizeof(Buffer->BitMapInfo.bmiHeader);
+  Buffer->BitMapInfo.bmiHeader.biWidth  = Buffer->Width;
+  Buffer->BitMapInfo.bmiHeader.biHeight = -Buffer->Height;
+  Buffer->BitMapInfo.bmiHeader.biPlanes  = 1;
+  Buffer->BitMapInfo.bmiHeader.biBitCount = BitsPerPixel;
+  Buffer->BitMapInfo.bmiHeader.biCompression = BI_RGB;
 
-  BitMapMemory = VirtualAlloc(0,
-                              BytesPerPixel * ScreenWidth * ScreenHeight,
-                              MEM_COMMIT,
-                              PAGE_READWRITE);
-  assert(BitMapMemory);
 
-  RenderWeirdRectangle(0, 0);
+  int TotalBytes = BytesPerPixel * Buffer->Width * Buffer->Height;
+  Buffer->Data = (uint8_t*) VirtualAlloc(0, TotalBytes, MEM_COMMIT, PAGE_READWRITE);
+
+  RenderWeirdRectangle(Buffer, 0, 0);
 }
 
 internal_func void
-Win32UpdateWindow(HDC DeviceContext, RECT* ClientRect, int X, int Y, int Width, int Height)
+Win32UpdateWindow(win32_offscreen_buffer* Buffer,
+                  HDC DeviceContext,
+                  RECT* ClientRect,
+                  int X, int Y, int Width, int Height)
 {
   StretchDIBits(DeviceContext,
   /*
@@ -81,9 +97,9 @@ Win32UpdateWindow(HDC DeviceContext, RECT* ClientRect, int X, int Y, int Width, 
                 X, Y, Width, Height,
    */
                 0, 0, ClientRect->right - ClientRect->left, ClientRect->bottom - ClientRect->top,
-                0, 0, ScreenWidth, ScreenHeight,
-                BitMapMemory,
-                &BitMapInfo,
+                0, 0, Buffer->Width, Buffer->Height,
+                Buffer->Data,
+                &Buffer->BitMapInfo,
                 DIB_RGB_COLORS, SRCCOPY);
 }
 
@@ -94,6 +110,7 @@ Win32WindowProc(HWND Window,
                 LPARAM  LParam
 )
 {
+  auto ApplicationData = (win32_application_data*) GetWindowLongPtrW(Window, GWLP_USERDATA);
   LRESULT Res = 0;
   switch (Msg)
   {
@@ -107,7 +124,7 @@ Win32WindowProc(HWND Window,
       int Y = ClientRect.top;
       int Width = ClientRect.right - ClientRect.left;
       int Height = ClientRect.bottom - ClientRect.top;
-      Win32UpdateWindow(PaintInfo.hdc, &ClientRect, X, Y, Width, Height);
+      Win32UpdateWindow(&ApplicationData->Buffer, PaintInfo.hdc, &ClientRect, X, Y, Width, Height);
       EndPaint(Window, &PaintInfo);
 
     } break;
@@ -119,7 +136,7 @@ Win32WindowProc(HWND Window,
       int Y = ClientRect.top;
       int Width = ClientRect.right - ClientRect.left;
       int Height = ClientRect.bottom - ClientRect.top;
-      Win32ResizeDIBSection(X, Y, Width, Height);
+      Win32ResizeDIBSection(&ApplicationData->Buffer, X, Y, Width, Height);
     } break;
     case WM_CLOSE:
     {
@@ -133,6 +150,11 @@ Win32WindowProc(HWND Window,
     {
       OutputDebugStringW(L"WM_ACTIVATEAPP\n");
     } break;
+    case WM_CREATE:
+    {
+      CREATESTRUCTW* WindowCreateInfo = (CREATESTRUCTW*) LParam;
+      SetWindowLongPtrW(Window, GWLP_USERDATA, (LONG_PTR) WindowCreateInfo->lpCreateParams);
+    } break;
     default:
     {
       Res = DefWindowProc(Window, Msg, WParam, LParam);
@@ -143,11 +165,14 @@ Win32WindowProc(HWND Window,
 }
 
 
+internal_func
 int wWinMain(HINSTANCE hInstance,
   HINSTANCE hPrevInstance,
   LPWSTR     lpCmdLine,
   int       nShowCmd)
 {
+  win32_application_data ApplicationData = {};
+
   WNDCLASSEXW WindowClass = {};
   WindowClass.cbSize = sizeof(WNDCLASSEXW);
   WindowClass.lpfnWndProc = &Win32WindowProc;
@@ -160,6 +185,10 @@ int wWinMain(HINSTANCE hInstance,
     return 1;
   }
 
+  // NOTE (hanasou): We will pass application data and store it when
+  // WM_CREATE is called because other messages are handled by application
+  // before we enter event loop (WM_SIZE)
+
   HWND Window = CreateWindowExW(0,
     WindowClass.lpszClassName,
     L"Handmade Hero",
@@ -171,7 +200,7 @@ int wWinMain(HINSTANCE hInstance,
     0,
     0,
     hInstance,
-    0
+    (LPVOID) &ApplicationData 
   );
 
   if (Window == NULL)
@@ -183,6 +212,7 @@ int wWinMain(HINSTANCE hInstance,
   Win32AppIsRunning = true;
   int XOffset = 0;
   int YOffset = 0;
+
   while (Win32AppIsRunning)
   {
     MSG Msg;
@@ -204,12 +234,13 @@ int wWinMain(HINSTANCE hInstance,
     int WindowWidth = ClientRect.right - ClientRect.left;
     int WindowHeight = ClientRect.bottom - ClientRect.top;
 
-    RenderWeirdRectangle(XOffset, YOffset);
-    Win32UpdateWindow(DeviceContext, &ClientRect, 0, 0, WindowWidth, WindowHeight);
+    RenderWeirdRectangle(&ApplicationData.Buffer, XOffset, YOffset);
+    Win32UpdateWindow(&ApplicationData.Buffer, DeviceContext, &ClientRect, 0, 0, WindowWidth, WindowHeight);
 
     ReleaseDC(Window, DeviceContext);
 
     XOffset++;
+    YOffset += 2;
 
 
   }
