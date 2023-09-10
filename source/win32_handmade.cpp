@@ -3,21 +3,22 @@
 #include <cassert>
 
 #include <xinput.h>
+#include <dsound.h>
 
 #define global_variable static
 #define local_persist   static
-#define internal_func        static
+#define internal_func   static
 
-#define X_INPUT_GET_STATE(name) DWORD WINAPI name (DWORD dwUserIndex, XINPUT_STATE* pState)
-typedef X_INPUT_GET_STATE(x_input_get_state);
-X_INPUT_GET_STATE(XInputGetStateStub)
+// DWORD WINAPI XInputGetState (DWORD dwUserIndex, XINPUT_STATE* pState)
+using x_input_get_state = DWORD WINAPI (DWORD, XINPUT_STATE*);
+DWORD WINAPI XInputGetStateStub (DWORD, XINPUT_STATE*)
 {
   return ERROR_DEVICE_NOT_CONNECTED;
 }
 
-#define X_INPUT_SET_STATE(name) DWORD WINAPI name (DWORD dwUserIndex, XINPUT_VIBRATION* pVibration)
-typedef X_INPUT_SET_STATE(x_input_set_state);
-X_INPUT_SET_STATE(XInputSetStateStub)
+// DWORD WINAPI name (DWORD dwUserIndex, XINPUT_VIBRATION* pVibration)
+using x_input_set_state = DWORD WINAPI (DWORD, XINPUT_VIBRATION*);
+DWORD WINAPI XInputSetStateStub(DWORD, XINPUT_VIBRATION*)
 {
   return ERROR_DEVICE_NOT_CONNECTED;
 }
@@ -26,6 +27,13 @@ X_INPUT_SET_STATE(XInputSetStateStub)
 #define XInputSetState XInputSetState_
 global_variable x_input_get_state* XInputGetState = &XInputGetStateStub;
 global_variable x_input_set_state* XInputSetState = &XInputSetStateStub;
+
+
+//HRESULT WINAPI DirectSoundCreate8(_In_opt_ LPCGUID pcGuidDevice, _Outptr_ LPDIRECTSOUND8 *ppDS8, _Pre_null_ LPUNKNOWN pUnkOuter);
+using direct_sound_create = HRESULT WINAPI (LPCGUID, LPDIRECTSOUND8 *, LPUNKNOWN);
+#define DirectSoundCreate DirectSoundCreate_
+global_variable direct_sound_create* DirectSoundCreate;
+
 
 internal_func void
 LoadXInputDll()
@@ -36,13 +44,14 @@ LoadXInputDll()
   HMODULE Handle = LoadLibraryW(DllName1_r);
   if (Handle == NULL)
   {
-    HMODULE Handle = LoadLibraryW(DllName2_r);
+    Handle = LoadLibraryW(DllName2_r);
   }
 
   if (Handle != NULL)
   {
     XInputGetState = (x_input_get_state*) GetProcAddress(Handle, "XInputGetState");
     XInputSetState = (x_input_set_state*) GetProcAddress(Handle, "XInputSetState");
+    assert(XInputGetState && XInputSetState);
   }
   else
   {
@@ -56,10 +65,12 @@ global_variable int        BytesPerPixel = 4;
 
 struct win32_offscreen_buffer
 {
+#pragma warning(disable:4820)
   BITMAPINFO BitMapInfo;
+  void*      Data;
   int        Width;
   int        Height;
-  void*      Data;
+#pragma warning(default:4820)
 };
 
 struct win32_window_size
@@ -95,7 +106,7 @@ RenderWeirdRectangle(win32_offscreen_buffer* Buffer, int XOffset, int YOffset)
       uint8_t Green = (uint8_t) (XOffset + X);
       uint8_t Blue  = (uint8_t) (YOffset + Y);
 
-      *Pixel++ =  (Green << 8) | Blue;
+      *Pixel++ = (uint32_t)((Green << 8) | Blue);
 
     }
 
@@ -107,6 +118,7 @@ RenderWeirdRectangle(win32_offscreen_buffer* Buffer, int XOffset, int YOffset)
 internal_func void
 Win32ResizeDIBSection(win32_offscreen_buffer* Buffer, int X, int Y, int Width, int Height)
 {
+  assert(Width >= 0 && Height >= 0 && Buffer);
   if (Buffer->Data)
   {
     VirtualFree(Buffer->Data, 0, MEM_RELEASE);
@@ -147,6 +159,79 @@ Win32UpdateWindow(win32_offscreen_buffer* Buffer,
                 Buffer->Data,
                 &Buffer->BitMapInfo,
                 DIB_RGB_COLORS, SRCCOPY);
+}
+
+internal_func void
+Win32InitDSound(HWND Window, unsigned int SamplesPerSec, unsigned int BufferSize)
+{
+  local_persist const wchar_t DllName_r[] = L"dsound.dll";
+  HMODULE Handle = LoadLibraryW(DllName_r);
+  
+  if (Handle == NULL)
+  {
+    // TODO (hanasou): Diagnostic
+    return;
+  }
+
+  DirectSoundCreate = (direct_sound_create*) GetProcAddress(Handle, "DirectSoundCreate");
+  assert(DirectSoundCreate);
+
+  LPDIRECTSOUND8 SoundDevice;
+  if (!SUCCEEDED(DirectSoundCreate(NULL, &SoundDevice, NULL)))
+  {
+    // TODO (hanasou): Diagnostic
+    return;
+  }
+
+  if (!SUCCEEDED(SoundDevice->SetCooperativeLevel(Window, DSSCL_PRIORITY)))
+  {
+    // TODO (hanasou): Diagnostic
+  }
+  DSBUFFERDESC BufferDesc = {};
+  BufferDesc.dwSize = sizeof(BufferDesc);
+  BufferDesc.dwFlags = DSBCAPS_PRIMARYBUFFER;
+  LPDIRECTSOUNDBUFFER PrimaryBuffer;
+  HRESULT Hr = SoundDevice->CreateSoundBuffer(&BufferDesc, &PrimaryBuffer, NULL);
+  if (!SUCCEEDED(Hr))
+  {
+    // TODO (hanaosou): Diagnostic
+  }
+
+  // Sample format: [LEFT] or [RIGHT]
+  // [LEFT] [RIGHT] [LEFT] [RIGHT] .... [LEFT] [RIGHT]
+  // |--48k samples per second-----|
+
+  int NumChannels = 2;
+  int BitsPerSample = 16;
+
+  WAVEFORMATEX WaveFormat = {};
+  WaveFormat.wFormatTag = WAVE_FORMAT_PCM;
+  WaveFormat.nChannels = NumChannels;
+  WaveFormat.nSamplesPerSec = SamplesPerSec;
+  WaveFormat.wBitsPerSample = BitsPerSample;
+  // NOTE (hanasou): We calculate 
+  WaveFormat.nBlockAlign = (NumChannels * BitsPerSample) / 8;
+  WaveFormat.nAvgBytesPerSec = WaveFormat.nBlockAlign * SamplesPerSec;
+  // 
+  WaveFormat.cbSize = 0;
+
+  Hr = PrimaryBuffer->SetFormat(&WaveFormat);
+  if (!SUCCEEDED(Hr))
+  {
+    // TODO (hanasou): Diagnostic
+  }
+
+  ZeroMemory(&BufferDesc, sizeof(BufferDesc));
+  BufferDesc.dwSize = sizeof(BufferDesc);
+  BufferDesc.dwBufferBytes = BufferSize;
+  BufferDesc.lpwfxFormat = &WaveFormat;
+
+  LPDIRECTSOUNDBUFFER SecondaryBuffer;
+  Hr = SoundDevice->CreateSoundBuffer(&BufferDesc, &SecondaryBuffer, NULL);
+  if (!SUCCEEDED(Hr))
+  {
+    // TODO (hanasou): Diagnostic
+  }
 }
 
 internal_func LRESULT
@@ -332,6 +417,8 @@ int wWinMain(HINSTANCE hInstance,
     return 1;
   }
 
+  Win32InitDSound(Window, 48000, 48000 * sizeof(int16_t) * 2);
+
   Win32AppIsRunning = true;
   int XOffset = 0;
   int YOffset = 0;
@@ -395,8 +482,6 @@ int wWinMain(HINSTANCE hInstance,
     XOffset++;
     YOffset += 2;
 
-
   }
-
   return 0;
 }

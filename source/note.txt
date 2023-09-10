@@ -60,3 +60,22 @@ Create XInputGetStateStub
 -LoadLibrary, GetProcAddress
 -vk_keyup, vk_keydown, vk_syskeyup, vksyskeydown
 - Virtual Key Code Lising, WasDown
+
+
+
+
+Day 7: DirectSound Initialization
+
+- Compiler flag to get full path of error, turn of warning
+- On Frame n, we try to output graphics and sound for frame n + 1
+- 48khz, 2sec
+- Win32InitDSound() only valid after we have window
+  - Load Library
+  - Get Direct sound object
+  - Create primary buffer: memory for direct sound
+  - Create secondary buffer: memory for us to write to
+- DirectSoundCreate 
+- SetCoorperativeLevel: We want sound output format as same as our input
+- CreateSoundBuffer
+- BufferSize, SamplePerSecond, 16 bit audio
+- SetFormat on primary buffer
