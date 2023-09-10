@@ -12,14 +12,14 @@
 typedef X_INPUT_GET_STATE(x_input_get_state);
 X_INPUT_GET_STATE(XInputGetStateStub)
 {
-  return 0;
+  return ERROR_DEVICE_NOT_CONNECTED;
 }
 
 #define X_INPUT_SET_STATE(name) DWORD WINAPI name (DWORD dwUserIndex, XINPUT_VIBRATION* pVibration)
 typedef X_INPUT_SET_STATE(x_input_set_state);
 X_INPUT_SET_STATE(XInputSetStateStub)
 {
-  return 0;
+  return ERROR_DEVICE_NOT_CONNECTED;
 }
 
 #define XInputGetState XInputGetState_
@@ -30,9 +30,15 @@ global_variable x_input_set_state* XInputSetState = &XInputSetStateStub;
 internal_func void
 LoadXInputDll()
 {
-  local_persist const wchar_t DllName [] = L"xinput1_4.dll";
+  local_persist const wchar_t DllName1_r [] = L"xinput1_4.dll";
+  local_persist const wchar_t DllName2_r [] = L"xinput1_3.dll";
 
-  HMODULE Handle = LoadLibraryW(L"xinput1_4.dll");
+  HMODULE Handle = LoadLibraryW(DllName1_r);
+  if (Handle == NULL)
+  {
+    HMODULE Handle = LoadLibraryW(DllName2_r);
+  }
+
   if (Handle != NULL)
   {
     XInputGetState = (x_input_get_state*) GetProcAddress(Handle, "XInputGetState");
@@ -40,9 +46,7 @@ LoadXInputDll()
   }
   else
   {
-    OutputDebugStringW(L"Can't load ");
-    OutputDebugStringW(DllName);
-    OutputDebugStringW(L"\n");
+    OutputDebugStringW(L"Can't load Xinput\n");
   }
 }
 
@@ -241,6 +245,14 @@ Win32WindowProc(HWND Window,
           case 'E':
             {
               OutputDebugStringW(L"E\n");
+            } break;
+          case VK_F4:
+            {
+              bool IsAltDown = ((LParam & (1 << 29)) != 0);
+              if (IsAltDown)
+              {
+                Win32AppIsRunning = false;
+              }
             } break;
           default:
             {
