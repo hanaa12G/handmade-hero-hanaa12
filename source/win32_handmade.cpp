@@ -82,6 +82,8 @@ struct win32_window_size
 struct win32_application_data
 {
   win32_offscreen_buffer Buffer;
+  LPDIRECTSOUNDBUFFER    SecondarySoundBuffer;
+  bool                   IsSoundPlaying;
 };
 
 
@@ -161,7 +163,7 @@ Win32UpdateWindow(win32_offscreen_buffer* Buffer,
                 DIB_RGB_COLORS, SRCCOPY);
 }
 
-internal_func void
+internal_func LPDIRECTSOUNDBUFFER
 Win32InitDSound(HWND Window, unsigned int SamplesPerSec, unsigned int BufferSize)
 {
   local_persist const wchar_t DllName_r[] = L"dsound.dll";
@@ -170,7 +172,7 @@ Win32InitDSound(HWND Window, unsigned int SamplesPerSec, unsigned int BufferSize
   if (Handle == NULL)
   {
     // TODO (hanasou): Diagnostic
-    return;
+    return NULL;
   }
 
   DirectSoundCreate = (direct_sound_create*) GetProcAddress(Handle, "DirectSoundCreate");
@@ -180,12 +182,13 @@ Win32InitDSound(HWND Window, unsigned int SamplesPerSec, unsigned int BufferSize
   if (!SUCCEEDED(DirectSoundCreate(NULL, &SoundDevice, NULL)))
   {
     // TODO (hanasou): Diagnostic
-    return;
+    return NULL;
   }
 
   if (!SUCCEEDED(SoundDevice->SetCooperativeLevel(Window, DSSCL_PRIORITY)))
   {
     // TODO (hanasou): Diagnostic
+    return NULL;
   }
   DSBUFFERDESC BufferDesc = {};
   BufferDesc.dwSize = sizeof(BufferDesc);
@@ -195,6 +198,7 @@ Win32InitDSound(HWND Window, unsigned int SamplesPerSec, unsigned int BufferSize
   if (!SUCCEEDED(Hr))
   {
     // TODO (hanaosou): Diagnostic
+    return NULL;
   }
 
   // Sample format: [LEFT] or [RIGHT]
@@ -219,6 +223,7 @@ Win32InitDSound(HWND Window, unsigned int SamplesPerSec, unsigned int BufferSize
   if (!SUCCEEDED(Hr))
   {
     // TODO (hanasou): Diagnostic
+    return NULL;
   }
 
   ZeroMemory(&BufferDesc, sizeof(BufferDesc));
@@ -231,7 +236,10 @@ Win32InitDSound(HWND Window, unsigned int SamplesPerSec, unsigned int BufferSize
   if (!SUCCEEDED(Hr))
   {
     // TODO (hanasou): Diagnostic
+    return NULL;
   }
+
+  return SecondaryBuffer;
 }
 
 internal_func LRESULT
@@ -417,11 +425,23 @@ int wWinMain(HINSTANCE hInstance,
     return 1;
   }
 
-  Win32InitDSound(Window, 48000, 48000 * sizeof(int16_t) * 2);
+  unsigned ToneHz = 456;
+  unsigned SamplesPerSecond = 48000;
+  unsigned BytesPerSample = sizeof (int16_t) * 2;
+  int16_t  Volume = 2000;
+  unsigned SecondaryBufferSize = SamplesPerSecond * BytesPerSample;
+  unsigned SampleRunningIndex = 0;
+  unsigned WaveLength = SamplesPerSecond / ToneHz; // (samples/s) / (cycles/s) = samples/cycle
+  unsigned HalfWaveLength = WaveLength / 2; // will write square wave so need half wave length
+
+  ApplicationData.SecondarySoundBuffer = Win32InitDSound(Window, SamplesPerSecond, SecondaryBufferSize);
+
 
   Win32AppIsRunning = true;
   int XOffset = 0;
   int YOffset = 0;
+
+
 
   while (Win32AppIsRunning)
   {
@@ -475,6 +495,102 @@ int wWinMain(HINSTANCE hInstance,
     int WindowHeight = ClientRect.bottom - ClientRect.top;
 
     RenderWeirdRectangle(&ApplicationData.Buffer, XOffset, YOffset);
+
+    if (ApplicationData.SecondarySoundBuffer)   
+    {
+      LPDIRECTSOUNDBUFFER SoundBuffer = ApplicationData.SecondarySoundBuffer;
+
+      unsigned ByteToLock = (SampleRunningIndex * BytesPerSample) % SecondaryBufferSize;
+      unsigned BytesToWrite = 0;
+
+      DWORD PlayCursor;
+      DWORD WriteCursor;
+      if (SUCCEEDED(SoundBuffer->GetCurrentPosition(&PlayCursor, &WriteCursor)))
+      {
+        if (ByteToLock > PlayCursor)
+        {
+          //  We have two regions to write [BytesToWrite, SecondaryBufferSize) and [0, PlayCursor)
+          BytesToWrite = SecondaryBufferSize - ByteToLock;
+          BytesToWrite += PlayCursor;
+        }
+        else if (ApplicationData.IsSoundPlaying)
+        {
+          // We have one region to write [BytesToWrite, PlayCursor)
+          BytesToWrite = PlayCursor;
+        }
+        else
+        {
+          // Special case, when we have not start playing
+          BytesToWrite = SecondaryBufferSize;
+        }
+
+        LPVOID Region1;
+        DWORD Region1Size;
+        LPVOID Region2;
+        DWORD Region2Size;
+        if (SUCCEEDED(SoundBuffer->Lock(ByteToLock, BytesToWrite,
+                            &Region1, &Region1Size,
+                            &Region2, &Region2Size,
+                            0)))
+        {
+          int Region1SampleSize = Region1Size / BytesPerSample;
+          int16_t* Sample = (int16_t*) Region1;
+          for (int Region1Index = 0;
+               Region1Index < Region1SampleSize;
+               ++Region1Index)
+          {
+            int16_t SampleValue = ((SampleRunningIndex % WaveLength) >= HalfWaveLength) ? 1 * Volume : -1 * Volume;
+            // Need to write left and write channel
+            *Sample++ = SampleValue;
+            *Sample++ = SampleValue;
+
+            ++SampleRunningIndex;
+          }
+
+          Sample = (int16_t*) Region2;
+          int Region2SampleSize = Region2Size / BytesPerSample;
+          for (int Region2Index = 0;
+               Region2Index < Region2SampleSize;
+               ++Region2Index)
+          {
+            int16_t SampleValue = ((SampleRunningIndex % WaveLength) >= HalfWaveLength) ? 1 * Volume : -1 * Volume;
+            *Sample++ = SampleValue;
+            *Sample++ = SampleValue;
+            
+            ++SampleRunningIndex;
+          }
+          if (SUCCEEDED(SoundBuffer->Unlock(Region1, Region1Size, Region2, Region2Size)))
+          {
+            if (!ApplicationData.IsSoundPlaying)
+            {
+              if (SUCCEEDED(SoundBuffer->Play(0, 0, DSBPLAY_LOOPING)))
+              {
+                ApplicationData.IsSoundPlaying = true;
+              }
+              else
+              {
+                // TODO (hanasou): Diagnostic
+              }
+            }
+          }
+          else
+          {
+            // TODO (hanasou): Diagnostic
+          }
+
+        }
+        else
+        {
+          // TODO (hanasou): Diagnostic
+        }
+        // TODO (hanasou): Play Sound
+      }
+      else
+      {
+        // TODO (hanasou): Diagnostic
+      }
+    }
+
     Win32UpdateWindow(&ApplicationData.Buffer, DeviceContext, &ClientRect, 0, 0, WindowWidth, WindowHeight);
 
     ReleaseDC(Window, DeviceContext);

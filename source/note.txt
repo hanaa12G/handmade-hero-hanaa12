@@ -79,3 +79,13 @@ Day 7: DirectSound Initialization
 - CreateSoundBuffer
 - BufferSize, SamplePerSecond, 16 bit audio
 - SetFormat on primary buffer
+
+Day 8: Writing a sound wave
+
+- DirectSound is COM (verify)
+- Msdn DirectSound buffer for documentation: 
+- Lock SecondaryBuffer, considering two region: lock near end (2 regions), lock near beginning (1 region)
+- Need to get the play cursor and write cursor: GetCurrentCursorPosition
+- Infinitive Running Index, then wrap to secondary buffer size,
+- Play
+- Unlock
