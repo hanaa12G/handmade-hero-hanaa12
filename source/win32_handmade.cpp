@@ -1,9 +1,13 @@
 #include <windows.h>
 #include <cstdint>
 #include <cassert>
+#include <cmath>
+#include <cstdio>
 
 #include <xinput.h>
 #include <dsound.h>
+
+#define PI 3.14159265359f
 
 #define global_variable static
 #define local_persist   static
@@ -79,11 +83,28 @@ struct win32_window_size
   int Height;
 };
 
+struct win32_sound_output
+{
+  unsigned ToneHz;
+  unsigned SamplesPerSecond;
+  unsigned BytesPerSample;
+  int16_t  Volume;
+  unsigned SecondaryBufferSize;
+  unsigned SampleRunningIndex;
+  unsigned WavePeriod;
+
+  float    Angle;
+
+
+  float t;
+};
+
 struct win32_application_data
 {
   win32_offscreen_buffer Buffer;
   LPDIRECTSOUNDBUFFER    SecondarySoundBuffer;
-  bool                   IsSoundPlaying;
+
+  win32_sound_output*    SoundOutput;
 };
 
 
@@ -242,6 +263,72 @@ Win32InitDSound(HWND Window, unsigned int SamplesPerSec, unsigned int BufferSize
   return SecondaryBuffer;
 }
 
+internal_func void
+Win32FillSoundBuffer(LPDIRECTSOUNDBUFFER SoundBuffer, win32_sound_output* SoundOutput, unsigned ByteToLock, unsigned BytesToWrite)
+{
+  LPVOID Region1;
+  DWORD Region1Size;
+  LPVOID Region2;
+  DWORD Region2Size;
+  if (SUCCEEDED(SoundBuffer->Lock(ByteToLock, BytesToWrite,
+          &Region1, &Region1Size,
+          &Region2, &Region2Size,
+          0)))
+  {
+
+    float AngleStep = (2 * PI / (float) SoundOutput->WavePeriod);
+
+    int Region1SampleSize = Region1Size / SoundOutput->BytesPerSample;
+    int16_t* Sample = (int16_t*) Region1;
+    for (int Region1Index = 0;
+        Region1Index < Region1SampleSize;
+        ++Region1Index)
+    {
+      float t = SoundOutput->Angle; 
+
+      int16_t SampleValue = (int16_t) (sinf(t) * SoundOutput->Volume);
+
+      *Sample++ = SampleValue;
+      *Sample++ = SampleValue;
+
+      SoundOutput->Angle += AngleStep;
+      SoundOutput->SampleRunningIndex += 1;
+    }
+
+    Sample = (int16_t*) Region2;
+    int Region2SampleSize = Region2Size / SoundOutput->BytesPerSample;
+    for (int Region2Index = 0;
+        Region2Index < Region2SampleSize;
+        ++Region2Index)
+    {
+      float t = SoundOutput->Angle; 
+
+      // sprintf(tmp, "%f %f\n", t, sinf(t));
+      // OutputDebugStringA(tmp);
+
+      int16_t SampleValue = (int16_t) (sinf(t) * SoundOutput->Volume);
+      *Sample++ = SampleValue;
+      *Sample++ = SampleValue;
+
+      SoundOutput->Angle += AngleStep;
+      SoundOutput->SampleRunningIndex += 1;
+    }
+    if (SUCCEEDED(SoundBuffer->Unlock(Region1, Region1Size, Region2, Region2Size)))
+    {
+    }
+    else
+    {
+      // TODO (hanasou): Diagnostic
+    }
+
+  }
+  else
+  {
+    // TODO (hanasou): Diagnostic
+  }
+  // TODO (hanasou): Play Sound
+}
+
 internal_func LRESULT
 Win32WindowProc(HWND Window,
                 UINT    Msg,
@@ -293,10 +380,20 @@ Win32WindowProc(HWND Window,
         {
           case VK_UP:
             {
+              if (ApplicationData->SoundOutput)
+              {
+                ApplicationData->SoundOutput->ToneHz += 10;
+                ApplicationData->SoundOutput->WavePeriod = ApplicationData->SoundOutput->SamplesPerSecond / ApplicationData->SoundOutput->ToneHz;
+              }
               OutputDebugStringW(L"VK_UP\n");
             } break;
           case VK_DOWN:
             {
+              if (ApplicationData->SoundOutput)
+              {
+                ApplicationData->SoundOutput->ToneHz -= 10;
+                ApplicationData->SoundOutput->WavePeriod = ApplicationData->SoundOutput->SamplesPerSecond / ApplicationData->SoundOutput->ToneHz;
+              }
               OutputDebugStringW(L"VK_DOWN\n");
             } break;
           case VK_LEFT:
@@ -425,16 +522,28 @@ int wWinMain(HINSTANCE hInstance,
     return 1;
   }
 
-  unsigned ToneHz = 456;
-  unsigned SamplesPerSecond = 48000;
-  unsigned BytesPerSample = sizeof (int16_t) * 2;
-  int16_t  Volume = 2000;
-  unsigned SecondaryBufferSize = SamplesPerSecond * BytesPerSample;
-  unsigned SampleRunningIndex = 0;
-  unsigned WaveLength = SamplesPerSecond / ToneHz; // (samples/s) / (cycles/s) = samples/cycle
-  unsigned HalfWaveLength = WaveLength / 2; // will write square wave so need half wave length
+  win32_sound_output SoundOutput;
+  SoundOutput.ToneHz = 261;
+  SoundOutput.SamplesPerSecond = 48000;
+  SoundOutput.BytesPerSample = sizeof (int16_t) * 2;
+  SoundOutput.Volume = 4000;
+  SoundOutput.SecondaryBufferSize = SoundOutput.SamplesPerSecond * SoundOutput.BytesPerSample;
+  SoundOutput.SampleRunningIndex = 0;
+  SoundOutput.WavePeriod = SoundOutput.SamplesPerSecond / SoundOutput.ToneHz; // (samples/s) / (cycles/s) = samples/cycle
+  SoundOutput.Angle = 0.0f;
+  bool IsSoundPlaying = false;
 
-  ApplicationData.SecondarySoundBuffer = Win32InitDSound(Window, SamplesPerSecond, SecondaryBufferSize);
+  ApplicationData.SecondarySoundBuffer = Win32InitDSound(Window, SoundOutput.SamplesPerSecond, SoundOutput.SecondaryBufferSize);
+  Win32FillSoundBuffer(ApplicationData.SecondarySoundBuffer, &SoundOutput, 0, SoundOutput.SecondaryBufferSize / 10);
+  if (SUCCEEDED(ApplicationData.SecondarySoundBuffer->Play(0, 0, DSBPLAY_LOOPING)))
+  {
+    IsSoundPlaying = true;
+    ApplicationData.SoundOutput = &SoundOutput;
+  }
+  else
+  {
+    OutputDebugStringW(L"Can't create window instance\n");
+  }
 
 
   Win32AppIsRunning = true;
@@ -496,94 +605,70 @@ int wWinMain(HINSTANCE hInstance,
 
     RenderWeirdRectangle(&ApplicationData.Buffer, XOffset, YOffset);
 
-    if (ApplicationData.SecondarySoundBuffer)   
+    if (IsSoundPlaying)   
     {
       LPDIRECTSOUNDBUFFER SoundBuffer = ApplicationData.SecondarySoundBuffer;
 
-      unsigned ByteToLock = (SampleRunningIndex * BytesPerSample) % SecondaryBufferSize;
+      unsigned ByteToLock = (SoundOutput.SampleRunningIndex * SoundOutput.BytesPerSample) % SoundOutput.SecondaryBufferSize;
       unsigned BytesToWrite = 0;
 
       DWORD PlayCursor;
       DWORD WriteCursor;
       if (SUCCEEDED(SoundBuffer->GetCurrentPosition(&PlayCursor, &WriteCursor)))
       {
-        if (ByteToLock > PlayCursor)
-        {
-          //  We have two regions to write [BytesToWrite, SecondaryBufferSize) and [0, PlayCursor)
-          BytesToWrite = SecondaryBufferSize - ByteToLock;
-          BytesToWrite += PlayCursor;
-        }
-        else if (ApplicationData.IsSoundPlaying)
-        {
-          // We have one region to write [BytesToWrite, PlayCursor)
-          BytesToWrite = PlayCursor;
-        }
-        else
-        {
-          // Special case, when we have not start playing
-          BytesToWrite = SecondaryBufferSize;
-        }
+        unsigned BytesToWriteUpperBound = (SoundOutput.BytesPerSample * SoundOutput.SamplesPerSecond / 10); // we only want to write 1/10 seconds ahead
 
-        LPVOID Region1;
-        DWORD Region1Size;
-        LPVOID Region2;
-        DWORD Region2Size;
-        if (SUCCEEDED(SoundBuffer->Lock(ByteToLock, BytesToWrite,
-                            &Region1, &Region1Size,
-                            &Region2, &Region2Size,
-                            0)))
+        if (ByteToLock == PlayCursor)
         {
-          int Region1SampleSize = Region1Size / BytesPerSample;
-          int16_t* Sample = (int16_t*) Region1;
-          for (int Region1Index = 0;
-               Region1Index < Region1SampleSize;
-               ++Region1Index)
+          // This is expected to not likely to happen, this case we don't have any extra space so we don't write anything
+          BytesToWrite = 0;
+        }
+        else if (ByteToLock > PlayCursor)
+        {
+          if (ByteToLock - PlayCursor > BytesToWriteUpperBound)
           {
-            int16_t SampleValue = ((SampleRunningIndex % WaveLength) >= HalfWaveLength) ? 1 * Volume : -1 * Volume;
-            // Need to write left and write channel
-            *Sample++ = SampleValue;
-            *Sample++ = SampleValue;
+            // TODO (hanasou) Better way to fix this
+            // We is too far ahead so we won't write anything 
 
-            ++SampleRunningIndex;
-          }
-
-          Sample = (int16_t*) Region2;
-          int Region2SampleSize = Region2Size / BytesPerSample;
-          for (int Region2Index = 0;
-               Region2Index < Region2SampleSize;
-               ++Region2Index)
-          {
-            int16_t SampleValue = ((SampleRunningIndex % WaveLength) >= HalfWaveLength) ? 1 * Volume : -1 * Volume;
-            *Sample++ = SampleValue;
-            *Sample++ = SampleValue;
-            
-            ++SampleRunningIndex;
-          }
-          if (SUCCEEDED(SoundBuffer->Unlock(Region1, Region1Size, Region2, Region2Size)))
-          {
-            if (!ApplicationData.IsSoundPlaying)
-            {
-              if (SUCCEEDED(SoundBuffer->Play(0, 0, DSBPLAY_LOOPING)))
-              {
-                ApplicationData.IsSoundPlaying = true;
-              }
-              else
-              {
-                // TODO (hanasou): Diagnostic
-              }
-            }
+            BytesToWrite = 0;
           }
           else
           {
-            // TODO (hanasou): Diagnostic
+            //  We have two regions to write [BytesToWrite, SecondaryBufferSize) and [0, PlayCursor), however we will calculate maximal size we can write
+            BytesToWrite = SoundOutput.SecondaryBufferSize - ByteToLock;
+            BytesToWrite += PlayCursor;
           }
-
         }
         else
         {
-          // TODO (hanasou): Diagnostic
+          unsigned Distance = (SoundOutput.SecondaryBufferSize - PlayCursor) + ByteToLock;
+          if (Distance > BytesToWriteUpperBound)
+          {
+            // TODO (hanasou) Better way to fix this
+            // We is too far ahead so we won't write anything 
+
+            BytesToWrite = 0;
+          }
+          else
+          {
+            // We have one region to write, here we calculate maximal size
+            // we can write
+            BytesToWrite = PlayCursor - ByteToLock;
+          }
         }
-        // TODO (hanasou): Play Sound
+
+
+        // char tmp[100];
+        // sprintf(tmp, "%u %d:%u %u %u\n", SoundOutput.SampleRunningIndex, PlayCursor, ByteToLock, BytesToWrite, BytesToWriteUpperBound);
+        // OutputDebugStringA(tmp);
+
+        // Round down if we write too much
+        if (BytesToWrite > BytesToWriteUpperBound)
+        {
+          BytesToWrite = BytesToWriteUpperBound;
+        }
+
+        Win32FillSoundBuffer(SoundBuffer, &SoundOutput, ByteToLock, BytesToWrite);
       }
       else
       {

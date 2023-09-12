@@ -84,8 +84,26 @@ Day 8: Writing a sound wave
 
 - DirectSound is COM (verify)
 - Msdn DirectSound buffer for documentation: 
-- Lock SecondaryBuffer, considering two region: lock near end (2 regions), lock near beginning (1 region)
+- Lock SecondaryBuffer, considering two region: lock near end (2 regions), lock near b eginning (1 region)
 - Need to get the play cursor and write cursor: GetCurrentCursorPosition
 - Infinitive Running Index, then wrap to secondary buffer size,
 - Play
 - Unlock
+
+
+Day 9: Sine wave
+
+- Modify to output sine wave
+- How to debug bug in sound output: Fill buffer only once and never do that again,
+- Latency sample count: How far we want to fill out sound buffer, not entirely the available space, so we
+can get more quick change in sound if we change the input,
+- Kick off the buffer (to fix the bugs????)
+
+
+Day 10: Frequency counter
+
+- Intel architecture reference manualal
+- RTDSC instruction
+- QueryPerformanceCounter
+- CPU clocks can change, try to check if posibble to lock them
+- Variable name: TimeElapsed, MsPerFrame
