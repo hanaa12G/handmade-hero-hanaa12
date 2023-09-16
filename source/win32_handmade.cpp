@@ -293,6 +293,13 @@ Win32FillSoundBuffer(LPDIRECTSOUNDBUFFER SoundBuffer, win32_sound_output* SoundO
 
       SoundOutput->Angle += AngleStep;
       SoundOutput->SampleRunningIndex += 1;
+
+      // NOTE (hanasou): When Angle is too large the floating point become insignificant, which
+      // cause sound shift a bit
+      // Adjust value down to always less than 2 PI
+      if (SoundOutput->Angle > 2 * PI) {
+        SoundOutput->Angle -= 2 * PI;
+      }
     }
 
     Sample = (int16_t*) Region2;
@@ -312,6 +319,13 @@ Win32FillSoundBuffer(LPDIRECTSOUNDBUFFER SoundBuffer, win32_sound_output* SoundO
 
       SoundOutput->Angle += AngleStep;
       SoundOutput->SampleRunningIndex += 1;
+
+      // NOTE (hanasou): When Angle is too large the floating point become insignificant, which
+      // cause sound shift a bit
+      // Adjust value down to always less than 2 PI
+      if (SoundOutput->Angle > 2 * PI) {
+        SoundOutput->Angle -= 2 * PI;
+      }
     }
     if (SUCCEEDED(SoundBuffer->Unlock(Region1, Region1Size, Region2, Region2Size)))
     {
@@ -552,8 +566,15 @@ int wWinMain(HINSTANCE hInstance,
 
 
 
+  LARGE_INTEGER FrameStartCount, FrameEndCount;
+  LARGE_INTEGER ProcessorFrequency;
+  QueryPerformanceFrequency(&ProcessorFrequency);
+
+  QueryPerformanceCounter(&FrameStartCount);
+
   while (Win32AppIsRunning)
   {
+    uint64_t ProcessorCounterStart = __rdtsc();
     MSG Msg;
     while (PeekMessageW(&Msg, Window, 0, 0, PM_REMOVE))
     {
@@ -683,6 +704,18 @@ int wWinMain(HINSTANCE hInstance,
     XOffset++;
     YOffset += 2;
 
+    QueryPerformanceCounter(&FrameEndCount);
+    LONGLONG EslapsedTime = (FrameEndCount.QuadPart - FrameStartCount.QuadPart) * 1000 / ProcessorFrequency.QuadPart ;
+    int FPS = ProcessorFrequency.QuadPart  / (FrameEndCount.QuadPart - FrameStartCount.QuadPart);
+    uint64_t ProcessorCounterEnd = __rdtsc();
+    uint64_t ProcessorCounterEslapsed = ProcessorCounterEnd - ProcessorCounterStart;
+
+    char TimeDebugStr[128];
+    std::snprintf(TimeDebugStr, 128, "Frame: %lldms, FPS: %d, ProceessorCounter: %lluM\n", EslapsedTime, FPS, ProcessorCounterEslapsed / 1000000);
+
+    OutputDebugStringA(TimeDebugStr);
+
+    FrameStartCount = FrameEndCount;
   }
   return 0;
 }
