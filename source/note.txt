@@ -107,3 +107,20 @@ Day 10: Frequency counter
 - QueryPerformanceCounter
 - CPU clocks can change, try to check if posibble to lock them
 - Variable name: TimeElapsed, MsPerFrame
+
+
+Day 11: Basic of API design
+
+- Unity build: one conceptutal translation unit for entire project: "If I'm on window, win32_handmade.cpp
+is the only one file built, if onlinux, linux_handmade.cpp is the only one file built"
+- Virtual platform API: For game it is a bit hard because different operating system has different to set
+up device. For example:
+  SetupAudio()
+  SetupWindow()
+ 
+ These calls will depend on operating system, maybe audio need a window first. As a game, it should not 
+ care about the order
+- handmade.h
+- GameUpdateAndRender() replace RenderWeirdGradient()
+
+

@@ -7,6 +7,8 @@
 #include <xinput.h>
 #include <dsound.h>
 
+
+#include "handmade.cpp" 
 #define PI 3.14159265359f
 
 #define global_variable static
@@ -69,12 +71,11 @@ global_variable int        BytesPerPixel = 4;
 
 struct win32_offscreen_buffer
 {
-#pragma warning(disable:4820)
   BITMAPINFO BitMapInfo;
   void*      Data;
   int        Width;
   int        Height;
-#pragma warning(default:4820)
+  int        Pitch;
 };
 
 struct win32_window_size
@@ -151,6 +152,7 @@ Win32ResizeDIBSection(win32_offscreen_buffer* Buffer, int X, int Y, int Width, i
   int BitsPerPixel = 32;
   Buffer->Width = Width;
   Buffer->Height = Height;
+  Buffer->Pitch = BytesPerPixel * Buffer->Width;
 
   Buffer->BitMapInfo.bmiHeader.biSize   = sizeof(Buffer->BitMapInfo.bmiHeader);
   Buffer->BitMapInfo.bmiHeader.biWidth  = Buffer->Width;
@@ -624,7 +626,13 @@ int wWinMain(HINSTANCE hInstance,
     int WindowWidth = ClientRect.right - ClientRect.left;
     int WindowHeight = ClientRect.bottom - ClientRect.top;
 
-    RenderWeirdRectangle(&ApplicationData.Buffer, XOffset, YOffset);
+    game_offscreen_buffer GameDrawingBuffer;
+    GameDrawingBuffer.Data = ApplicationData.Buffer.Data;
+    GameDrawingBuffer.Width = ApplicationData.Buffer.Width;
+    GameDrawingBuffer.Height = ApplicationData.Buffer.Height;
+    GameDrawingBuffer.Pitch  = ApplicationData.Buffer.Pitch;
+
+    GameUpdateAndRender(&GameDrawingBuffer, XOffset, YOffset);
 
     if (IsSoundPlaying)   
     {
