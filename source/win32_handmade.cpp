@@ -11,9 +11,12 @@
 #include "handmade.cpp" 
 #define PI 3.14159265359f
 
+#ifndef HANDMDE_GLOBAL_DEFINE
+#define HANDMDE_GLOBAL_DEFINE
 #define global_variable static
-#define local_persist   static
-#define internal_func   static
+#define local_persist static
+#define internal_func static
+#endif
 
 // DWORD WINAPI XInputGetState (DWORD dwUserIndex, XINPUT_STATE* pState)
 using x_input_get_state = DWORD WINAPI (DWORD, XINPUT_STATE*);
@@ -106,6 +109,9 @@ struct win32_application_data
   LPDIRECTSOUNDBUFFER    SecondarySoundBuffer;
 
   win32_sound_output*    SoundOutput;
+
+  int XOffset;
+  int YOffset;
 };
 
 
@@ -266,7 +272,9 @@ Win32InitDSound(HWND Window, unsigned int SamplesPerSec, unsigned int BufferSize
 }
 
 internal_func void
-Win32FillSoundBuffer(LPDIRECTSOUNDBUFFER SoundBuffer, win32_sound_output* SoundOutput, unsigned ByteToLock, unsigned BytesToWrite)
+Win32FillSoundBuffer(LPDIRECTSOUNDBUFFER SoundBuffer,
+  win32_sound_output* SoundOutput, unsigned ByteToLock, unsigned BytesToWrite,
+  game_sound_output_buffer* GameSoundBuffer)
 {
   LPVOID Region1;
   DWORD Region1Size;
@@ -277,57 +285,82 @@ Win32FillSoundBuffer(LPDIRECTSOUNDBUFFER SoundBuffer, win32_sound_output* SoundO
           &Region2, &Region2Size,
           0)))
   {
-
-    float AngleStep = (2 * PI / (float) SoundOutput->WavePeriod);
-
     int Region1SampleSize = Region1Size / SoundOutput->BytesPerSample;
-    int16_t* Sample = (int16_t*) Region1;
+    int16_t* SampleOut = (int16_t*) Region1;
+    int16_t* SampleIn = GameSoundBuffer->Samples;
     for (int Region1Index = 0;
         Region1Index < Region1SampleSize;
         ++Region1Index)
     {
-      float t = SoundOutput->Angle; 
+      int16_t SampleValue = *SampleIn++;
 
-      int16_t SampleValue = (int16_t) (sinf(t) * SoundOutput->Volume);
-
-      *Sample++ = SampleValue;
-      *Sample++ = SampleValue;
-
-      SoundOutput->Angle += AngleStep;
-      SoundOutput->SampleRunningIndex += 1;
-
-      // NOTE (hanasou): When Angle is too large the floating point become insignificant, which
-      // cause sound shift a bit
-      // Adjust value down to always less than 2 PI
-      if (SoundOutput->Angle > 2 * PI) {
-        SoundOutput->Angle -= 2 * PI;
-      }
+      *SampleOut++ = SampleValue;
+      *SampleOut++ = SampleValue;
     }
 
-    Sample = (int16_t*) Region2;
+    SampleOut = (int16_t*) Region2;
     int Region2SampleSize = Region2Size / SoundOutput->BytesPerSample;
     for (int Region2Index = 0;
         Region2Index < Region2SampleSize;
         ++Region2Index)
     {
-      float t = SoundOutput->Angle; 
+      int16_t SampleValue = *SampleIn++;
+      *SampleOut++ = SampleValue;
+      *SampleOut++ = SampleValue;
+    }
+    if (SUCCEEDED(SoundBuffer->Unlock(Region1, Region1Size, Region2, Region2Size)))
+    {
+    }
+    else
+    {
+      // TODO (hanasou): Diagnostic
+    }
 
-      // sprintf(tmp, "%f %f\n", t, sinf(t));
-      // OutputDebugStringA(tmp);
+  }
+  else
+  {
+    // TODO (hanasou): Diagnostic
+  }
+  // TODO (hanasou): Play Sound
+}
 
-      int16_t SampleValue = (int16_t) (sinf(t) * SoundOutput->Volume);
-      *Sample++ = SampleValue;
-      *Sample++ = SampleValue;
+internal_func void
+Win32ClearSoundBuffer(LPDIRECTSOUNDBUFFER SoundBuffer, win32_sound_output* SoundOutput)
+{
+  LPVOID Region1;
+  DWORD Region1Size;
+  LPVOID Region2;
+  DWORD Region2Size;
 
-      SoundOutput->Angle += AngleStep;
-      SoundOutput->SampleRunningIndex += 1;
+  unsigned ByteToLock = 0;
+  unsigned BytesToWrite = SoundOutput->SecondaryBufferSize;
 
-      // NOTE (hanasou): When Angle is too large the floating point become insignificant, which
-      // cause sound shift a bit
-      // Adjust value down to always less than 2 PI
-      if (SoundOutput->Angle > 2 * PI) {
-        SoundOutput->Angle -= 2 * PI;
-      }
+  if (SUCCEEDED(SoundBuffer->Lock(ByteToLock, BytesToWrite,
+          &Region1, &Region1Size,
+          &Region2, &Region2Size,
+          0)))
+  {
+    int Region1SampleSize = Region1Size / SoundOutput->BytesPerSample;
+    int16_t* SampleOut = (int16_t*) Region1;
+    for (int Region1Index = 0;
+        Region1Index < Region1SampleSize;
+        ++Region1Index)
+    {
+      int16_t SampleValue = 0;
+
+      *SampleOut++ = SampleValue;
+      *SampleOut++ = SampleValue;
+    }
+
+    SampleOut = (int16_t*) Region2;
+    int Region2SampleSize = Region2Size / SoundOutput->BytesPerSample;
+    for (int Region2Index = 0;
+        Region2Index < Region2SampleSize;
+        ++Region2Index)
+    {
+      int16_t SampleValue = 0;
+      *SampleOut++ = SampleValue;
+      *SampleOut++ = SampleValue;
     }
     if (SUCCEEDED(SoundBuffer->Unlock(Region1, Region1Size, Region2, Region2Size)))
     {
@@ -400,6 +433,7 @@ Win32WindowProc(HWND Window,
               {
                 ApplicationData->SoundOutput->ToneHz += 10;
                 ApplicationData->SoundOutput->WavePeriod = ApplicationData->SoundOutput->SamplesPerSecond / ApplicationData->SoundOutput->ToneHz;
+                ApplicationData->YOffset += 20;
               }
               OutputDebugStringW(L"VK_UP\n");
             } break;
@@ -409,16 +443,19 @@ Win32WindowProc(HWND Window,
               {
                 ApplicationData->SoundOutput->ToneHz -= 10;
                 ApplicationData->SoundOutput->WavePeriod = ApplicationData->SoundOutput->SamplesPerSecond / ApplicationData->SoundOutput->ToneHz;
+                ApplicationData->YOffset -= 20;
               }
               OutputDebugStringW(L"VK_DOWN\n");
             } break;
           case VK_LEFT:
             {
               OutputDebugStringW(L"VK_LEFT\n");
+              ApplicationData->XOffset -= 20;
             } break;
           case VK_RIGHT:
             {
               OutputDebugStringW(L"VK_RIGHT\n");
+              ApplicationData->XOffset += 20;
             } break;
           case VK_SPACE:
             {
@@ -465,6 +502,31 @@ Win32WindowProc(HWND Window,
             } break;
         }
       }
+      else
+      {
+        switch (VKeyCode)
+        {
+          case VK_UP:
+            {
+              ApplicationData->YOffset += 2;
+            } break;
+          case VK_DOWN:
+            {
+              ApplicationData->YOffset -= 2;
+            } break;
+          case VK_LEFT:
+            {
+              ApplicationData->XOffset -= 2;
+            } break;
+          case VK_RIGHT:
+            {
+              ApplicationData->XOffset += 2;
+            } break;
+          default:
+            {
+            } break;
+        }
+      }
     } break;
     case WM_CLOSE:
     {
@@ -493,7 +555,6 @@ Win32WindowProc(HWND Window,
 }
 
 
-internal_func
 int wWinMain(HINSTANCE hInstance,
   HINSTANCE hPrevInstance,
   LPWSTR     lpCmdLine,
@@ -550,7 +611,7 @@ int wWinMain(HINSTANCE hInstance,
   bool IsSoundPlaying = false;
 
   ApplicationData.SecondarySoundBuffer = Win32InitDSound(Window, SoundOutput.SamplesPerSecond, SoundOutput.SecondaryBufferSize);
-  Win32FillSoundBuffer(ApplicationData.SecondarySoundBuffer, &SoundOutput, 0, SoundOutput.SecondaryBufferSize / 10);
+  Win32ClearSoundBuffer(ApplicationData.SecondarySoundBuffer, &SoundOutput);
   if (SUCCEEDED(ApplicationData.SecondarySoundBuffer->Play(0, 0, DSBPLAY_LOOPING)))
   {
     IsSoundPlaying = true;
@@ -563,8 +624,9 @@ int wWinMain(HINSTANCE hInstance,
 
 
   Win32AppIsRunning = true;
-  int XOffset = 0;
-  int YOffset = 0;
+
+  ApplicationData.XOffset = 0;
+  ApplicationData.YOffset = 0;
 
 
 
@@ -632,85 +694,67 @@ int wWinMain(HINSTANCE hInstance,
     GameDrawingBuffer.Height = ApplicationData.Buffer.Height;
     GameDrawingBuffer.Pitch  = ApplicationData.Buffer.Pitch;
 
-    GameUpdateAndRender(&GameDrawingBuffer, XOffset, YOffset);
 
-    if (IsSoundPlaying)   
+    DWORD PlayCursor = 0;
+    DWORD WriteCursor = 0;
+    local_persist DWORD LastWriteCursor = SoundOutput.SecondaryBufferSize;
+
+    unsigned ByteToLock = 0 ;
+    unsigned BytesToWrite = 0;
+    int Distance = 0;
+    bool SoundIsValid = false;
+    LPDIRECTSOUNDBUFFER SoundBuffer = ApplicationData.SecondarySoundBuffer;
+    if (SUCCEEDED(SoundBuffer->GetCurrentPosition(&PlayCursor, &WriteCursor)))
     {
-      LPDIRECTSOUNDBUFFER SoundBuffer = ApplicationData.SecondarySoundBuffer;
+      unsigned BytesToWriteUpperBound = (SoundOutput.BytesPerSample * SoundOutput.SamplesPerSecond / 10);
 
-      unsigned ByteToLock = (SoundOutput.SampleRunningIndex * SoundOutput.BytesPerSample) % SoundOutput.SecondaryBufferSize;
-      unsigned BytesToWrite = 0;
-
-      DWORD PlayCursor;
-      DWORD WriteCursor;
-      if (SUCCEEDED(SoundBuffer->GetCurrentPosition(&PlayCursor, &WriteCursor)))
+      if (LastWriteCursor == SoundOutput.SecondaryBufferSize)
       {
-        unsigned BytesToWriteUpperBound = (SoundOutput.BytesPerSample * SoundOutput.SamplesPerSecond / 10); // we only want to write 1/10 seconds ahead
+        LastWriteCursor = WriteCursor;
+      }
 
-        if (ByteToLock == PlayCursor)
-        {
-          // This is expected to not likely to happen, this case we don't have any extra space so we don't write anything
-          BytesToWrite = 0;
-        }
-        else if (ByteToLock > PlayCursor)
-        {
-          if (ByteToLock - PlayCursor > BytesToWriteUpperBound)
-          {
-            // TODO (hanasou) Better way to fix this
-            // We is too far ahead so we won't write anything 
+      if (LastWriteCursor >= WriteCursor)
+      {
+        ByteToLock = LastWriteCursor;
 
-            BytesToWrite = 0;
-          }
-          else
-          {
-            //  We have two regions to write [BytesToWrite, SecondaryBufferSize) and [0, PlayCursor), however we will calculate maximal size we can write
-            BytesToWrite = SoundOutput.SecondaryBufferSize - ByteToLock;
-            BytesToWrite += PlayCursor;
-          }
-        }
-        else
-        {
-          unsigned Distance = (SoundOutput.SecondaryBufferSize - PlayCursor) + ByteToLock;
-          if (Distance > BytesToWriteUpperBound)
-          {
-            // TODO (hanasou) Better way to fix this
-            // We is too far ahead so we won't write anything 
-
-            BytesToWrite = 0;
-          }
-          else
-          {
-            // We have one region to write, here we calculate maximal size
-            // we can write
-            BytesToWrite = PlayCursor - ByteToLock;
-          }
-        }
-
-
-        // char tmp[100];
-        // sprintf(tmp, "%u %d:%u %u %u\n", SoundOutput.SampleRunningIndex, PlayCursor, ByteToLock, BytesToWrite, BytesToWriteUpperBound);
-        // OutputDebugStringA(tmp);
-
-        // Round down if we write too much
-        if (BytesToWrite > BytesToWriteUpperBound)
-        {
-          BytesToWrite = BytesToWriteUpperBound;
-        }
-
-        Win32FillSoundBuffer(SoundBuffer, &SoundOutput, ByteToLock, BytesToWrite);
+        Distance = LastWriteCursor - WriteCursor;
+        BytesToWrite = 0;
+        BytesToWrite = (Distance >= BytesToWriteUpperBound) ? 0 : (BytesToWriteUpperBound - Distance);
       }
       else
       {
-        // TODO (hanasou): Diagnostic
+        ByteToLock = LastWriteCursor;
+        Distance = LastWriteCursor + SoundOutput.SecondaryBufferSize - WriteCursor;
+        BytesToWrite = 0;
+        BytesToWrite = (Distance >= BytesToWriteUpperBound) ? 0 : (BytesToWriteUpperBound - Distance);
       }
+
+      SoundIsValid = true;
+      LastWriteCursor = (ByteToLock + BytesToWrite) % SoundOutput.SecondaryBufferSize;
+    }
+
+    int16_t Samples[48000 * 2];
+    game_sound_output_buffer GameSoundBuffer = {};
+
+    if (SoundIsValid)
+    {
+      GameSoundBuffer.SamplesPerSecond = SoundOutput.SamplesPerSecond;
+      GameSoundBuffer.SampleCountToOutput = BytesToWrite / SoundOutput.BytesPerSample;
+      GameSoundBuffer.Samples = Samples;
+    }
+
+    GameUpdateAndRender(&GameDrawingBuffer, ApplicationData.XOffset, ApplicationData.YOffset, &GameSoundBuffer, SoundOutput.ToneHz);
+
+    if (SoundIsValid)   
+    {
+      Win32FillSoundBuffer(SoundBuffer, &SoundOutput, ByteToLock, BytesToWrite, &GameSoundBuffer);
     }
 
     Win32UpdateWindow(&ApplicationData.Buffer, DeviceContext, &ClientRect, 0, 0, WindowWidth, WindowHeight);
 
     ReleaseDC(Window, DeviceContext);
 
-    XOffset++;
-    YOffset += 2;
+    ApplicationData.XOffset++;
 
     QueryPerformanceCounter(&FrameEndCount);
     LONGLONG EslapsedTime = (FrameEndCount.QuadPart - FrameStartCount.QuadPart) * 1000 / ProcessorFrequency.QuadPart ;
