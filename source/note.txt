@@ -124,3 +124,10 @@ up device. For example:
 - GameUpdateAndRender() replace RenderWeirdGradient()
 
 
+Date 13: Platform independent input
+- Move offsetx, offsety, tonehz to game local_persist
+- Digital button: Half transition count, button ended down, becasue we poll 1 time / frame -> half transitoin
+count maximum value is 1
+- Buttons : gamepad A, gamepad B, gamepad x, gamepad y, left shoulder, right shoulder
+- Swap old controllers, min, max, swap macro todo
+- IsAnalog: separate offset movement to accept analog input and digital input

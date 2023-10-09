@@ -71,6 +71,7 @@ LoadXInputDll()
 
 global_variable bool       Win32AppIsRunning;
 global_variable int        BytesPerPixel = 4;
+global_variable bool       ShouldDisplayDebugInfo = false;
 
 struct win32_offscreen_buffer
 {
@@ -109,10 +110,29 @@ struct win32_application_data
   LPDIRECTSOUNDBUFFER    SecondarySoundBuffer;
 
   win32_sound_output*    SoundOutput;
-
-  int XOffset;
-  int YOffset;
+  game_input_controllers NewInputs;
+  game_input_controllers OldInputs;
 };
+
+
+internal_func void
+Win32PrintPerfInformation(long long EslapsedTime, int FPS, unsigned long long ProcessorCounterEslapsed)
+{
+  if (ShouldDisplayDebugInfo)
+  {
+    char TimeDebugStr[128];
+    std::snprintf(TimeDebugStr, 128, "Frame: %lldms, FPS: %d, ProcessorCounter: %lluM\n", EslapsedTime, FPS, ProcessorCounterEslapsed / 1000000);
+    OutputDebugStringA(TimeDebugStr);
+  }
+}
+
+
+internal_func void
+Win32ReadXInputButtonState(game_button_state* OldState, game_button_state* NewState, int ButtonBit)
+{
+  NewState->IsButtonEndedDown = ButtonBit;
+  NewState->HalfTransitionCount = (NewState->IsButtonEndedDown != OldState->IsButtonEndedDown) ? 1 : 0;
+}
 
 
 internal_func void
@@ -422,6 +442,8 @@ Win32WindowProc(HWND Window,
       uint8_t VKeyCode = WParam;
       bool WasKeyDown  = (LParam & (1 << 30)) != 0; 
       bool IsKeyDown   = (LParam & (1 << 31)) == 0;
+      game_input_controller* NewInput = &ApplicationData->NewInputs.Controllers[0];
+      game_input_controller* OldInput = &ApplicationData->OldInputs.Controllers[0];
 
       if (WasKeyDown != IsKeyDown)
       {
@@ -431,31 +453,32 @@ Win32WindowProc(HWND Window,
             {
               if (ApplicationData->SoundOutput)
               {
-                ApplicationData->SoundOutput->ToneHz += 10;
                 ApplicationData->SoundOutput->WavePeriod = ApplicationData->SoundOutput->SamplesPerSecond / ApplicationData->SoundOutput->ToneHz;
-                ApplicationData->YOffset += 20;
               }
-              OutputDebugStringW(L"VK_UP\n");
+
+              Win32ReadXInputButtonState(&OldInput->UpButton, &NewInput->UpButton, IsKeyDown); 
+              OutputDebugStringA("VK_UP\n");
             } break;
           case VK_DOWN:
             {
               if (ApplicationData->SoundOutput)
               {
-                ApplicationData->SoundOutput->ToneHz -= 10;
                 ApplicationData->SoundOutput->WavePeriod = ApplicationData->SoundOutput->SamplesPerSecond / ApplicationData->SoundOutput->ToneHz;
-                ApplicationData->YOffset -= 20;
               }
+              Win32ReadXInputButtonState(&OldInput->DownButton, &NewInput->DownButton, IsKeyDown); 
               OutputDebugStringW(L"VK_DOWN\n");
             } break;
           case VK_LEFT:
             {
-              OutputDebugStringW(L"VK_LEFT\n");
-              ApplicationData->XOffset -= 20;
+              Win32ReadXInputButtonState(&OldInput->LeftButton, &NewInput->LeftButton, IsKeyDown); 
+
+              OutputDebugStringA("VK_LEFT\n");
+
             } break;
           case VK_RIGHT:
             {
+              Win32ReadXInputButtonState(&OldInput->RightButton, &NewInput->RightButton, IsKeyDown); 
               OutputDebugStringW(L"VK_RIGHT\n");
-              ApplicationData->XOffset += 20;
             } break;
           case VK_SPACE:
             {
@@ -496,31 +519,6 @@ Win32WindowProc(HWND Window,
               {
                 Win32AppIsRunning = false;
               }
-            } break;
-          default:
-            {
-            } break;
-        }
-      }
-      else
-      {
-        switch (VKeyCode)
-        {
-          case VK_UP:
-            {
-              ApplicationData->YOffset += 2;
-            } break;
-          case VK_DOWN:
-            {
-              ApplicationData->YOffset -= 2;
-            } break;
-          case VK_LEFT:
-            {
-              ApplicationData->XOffset -= 2;
-            } break;
-          case VK_RIGHT:
-            {
-              ApplicationData->XOffset += 2;
             } break;
           default:
             {
@@ -625,10 +623,6 @@ int wWinMain(HINSTANCE hInstance,
 
   Win32AppIsRunning = true;
 
-  ApplicationData.XOffset = 0;
-  ApplicationData.YOffset = 0;
-
-
 
   LARGE_INTEGER FrameStartCount, FrameEndCount;
   LARGE_INTEGER ProcessorFrequency;
@@ -640,6 +634,10 @@ int wWinMain(HINSTANCE hInstance,
   {
     uint64_t ProcessorCounterStart = __rdtsc();
     MSG Msg;
+
+    game_input_controllers* NewInputs = &ApplicationData.NewInputs;
+    game_input_controllers* OldInputs = &ApplicationData.OldInputs;
+
     while (PeekMessageW(&Msg, Window, 0, 0, PM_REMOVE))
     {
       TranslateMessage(&Msg);
@@ -658,27 +656,55 @@ int wWinMain(HINSTANCE hInstance,
       {
         continue;
       }
+      game_input_controller* OldInput = &OldInputs->Controllers[ControllerIndex];
+      game_input_controller* NewInput = &NewInputs->Controllers[ControllerIndex];
 
       XINPUT_GAMEPAD* Pad = &ControllerState.Gamepad;
 
-      bool Up    = Pad->wButtons & XINPUT_GAMEPAD_DPAD_UP;
-      bool Down  = Pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
-      bool Left  = Pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
-      bool Right = Pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
-
-      bool Start = Pad->wButtons & XINPUT_GAMEPAD_START;
-      bool Back  = Pad->wButtons & XINPUT_GAMEPAD_BACK;
-
-      bool LeftShoulder  = Pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
-      bool RightShoulder = Pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
-
-      bool AButton = Pad->wButtons & XINPUT_GAMEPAD_A;
-      bool BButton = Pad->wButtons & XINPUT_GAMEPAD_B;
-      bool XButton = Pad->wButtons & XINPUT_GAMEPAD_X;
-      bool YButton = Pad->wButtons & XINPUT_GAMEPAD_Y;
+      NewInput->IsAnalog = true;
 
       int16_t StickX = Pad->sThumbLX;
       int16_t StickY = Pad->sThumbLY;
+
+      NewInput->StartX = OldInput->EndX;
+      NewInput->StartY = OldInput->EndY;
+
+      if (StickX >= 0)
+      {
+        NewInput->EndX = (float) StickX / 32767.0f;
+      }
+      else
+      {
+        NewInput->EndX = (float) StickX / 32768.0f;
+      }
+
+      if (StickY >= 0)
+      {
+        NewInput->EndY = (float) StickY / 32767.0f;
+      }
+      else
+      {
+        NewInput->EndY = (float) StickY / 32768.0f;
+      }
+
+      NewInput->MaxX = (NewInput->StartX > NewInput->EndX) ? NewInput->StartX : NewInput->EndX;
+      NewInput->MaxY = (NewInput->StartY > NewInput->EndY) ? NewInput->StartY : NewInput->EndY;
+
+      // bool Up    = Pad->wButtons & XINPUT_GAMEPAD_DPAD_UP;
+      // bool Down  = Pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
+      // bool Left  = Pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
+      // bool Right = Pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
+      // bool Start = Pad->wButtons & XINPUT_GAMEPAD_START;
+      // bool Back  = Pad->wButtons & XINPUT_GAMEPAD_BACK;
+
+
+      Win32ReadXInputButtonState(&OldInput->LeftButton, &NewInput->LeftButton, Pad->wButtons & XINPUT_GAMEPAD_X);
+      Win32ReadXInputButtonState(&OldInput->RightButton, &NewInput->RightButton, Pad->wButtons & XINPUT_GAMEPAD_B);
+      Win32ReadXInputButtonState(&OldInput->UpButton, &NewInput->UpButton, Pad->wButtons & XINPUT_GAMEPAD_Y);
+      Win32ReadXInputButtonState(&OldInput->DownButton, &NewInput->DownButton, Pad->wButtons & XINPUT_GAMEPAD_A);
+
+      Win32ReadXInputButtonState(&OldInput->LeftShoulderButton, &NewInput->LeftShoulderButton, Pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER);
+      Win32ReadXInputButtonState(&OldInput->RightShoulderButton, &NewInput->RightShoulderButton, Pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER);
     }
 
 
@@ -743,7 +769,7 @@ int wWinMain(HINSTANCE hInstance,
       GameSoundBuffer.Samples = Samples;
     }
 
-    GameUpdateAndRender(&GameDrawingBuffer, ApplicationData.XOffset, ApplicationData.YOffset, &GameSoundBuffer, SoundOutput.ToneHz);
+    GameUpdateAndRender(&GameDrawingBuffer, &GameSoundBuffer, NewInputs);
 
     if (SoundIsValid)   
     {
@@ -754,7 +780,10 @@ int wWinMain(HINSTANCE hInstance,
 
     ReleaseDC(Window, DeviceContext);
 
-    ApplicationData.XOffset++;
+
+
+    *OldInputs = *NewInputs;
+    *NewInputs = {};
 
     QueryPerformanceCounter(&FrameEndCount);
     LONGLONG EslapsedTime = (FrameEndCount.QuadPart - FrameStartCount.QuadPart) * 1000 / ProcessorFrequency.QuadPart ;
@@ -762,12 +791,9 @@ int wWinMain(HINSTANCE hInstance,
     uint64_t ProcessorCounterEnd = __rdtsc();
     uint64_t ProcessorCounterEslapsed = ProcessorCounterEnd - ProcessorCounterStart;
 
-    char TimeDebugStr[128];
-    std::snprintf(TimeDebugStr, 128, "Frame: %lldms, FPS: %d, ProceessorCounter: %lluM\n", EslapsedTime, FPS, ProcessorCounterEslapsed / 1000000);
-
-    OutputDebugStringA(TimeDebugStr);
-
+    Win32PrintPerfInformation(EslapsedTime, FPS, ProcessorCounterEslapsed / 1'000'000);
     FrameStartCount = FrameEndCount;
+
   }
   return 0;
 }

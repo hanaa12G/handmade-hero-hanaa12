@@ -71,9 +71,55 @@ RenderWeirdRectangle(game_offscreen_buffer* Buffer, int XOffset, int YOffset)
   }
 }
 
-void GameUpdateAndRender(game_offscreen_buffer* Buffer, int XOffset, int YOffset,
-  game_sound_output_buffer* SoundBuffer, unsigned ToneHz)
+void GameUpdateAndRender(game_offscreen_buffer* Buffer,
+  game_sound_output_buffer* SoundBuffer,
+  game_input_controllers* Inputs)
 {
+  local_persist int XOffset = 0;
+  local_persist int YOffset = 0;
+  local_persist int XSpeed  = 0;
+  local_persist int YSpeed  = 1;
+  local_persist unsigned ToneHz = 260;
+
+
+
+  game_input_controller* Input = &Inputs->Controllers[0];
+
+  if (Input->IsAnalog)
+  {
+  }
+  else
+  {
+    const int Acceleration = 1;
+    game_button_state LeftButton = Input->LeftButton;
+    game_button_state RightButton = Input->RightButton;
+    game_button_state UpButton = Input->UpButton;
+    game_button_state DownButton = Input->DownButton;
+    if (LeftButton.HalfTransitionCount > 0 && LeftButton.IsButtonEndedDown)
+    {
+      XSpeed += Acceleration;
+    }
+    if (RightButton.HalfTransitionCount > 0 && RightButton.IsButtonEndedDown)
+    {
+      XSpeed -= Acceleration;
+    }
+
+    if (UpButton.HalfTransitionCount > 0 && UpButton.IsButtonEndedDown)
+    {
+      YOffset -= YSpeed;
+      ToneHz -= 10;
+    }
+
+    if (DownButton.HalfTransitionCount > 0 && DownButton.IsButtonEndedDown)
+    {
+      YOffset += YSpeed;
+      ToneHz += 10;
+    }
+    
+  }
+
+  XOffset += XSpeed;
+  YOffset += YSpeed;
   GameOutputSound(SoundBuffer, ToneHz);
   RenderWeirdRectangle(Buffer, XOffset, YOffset);
 }
