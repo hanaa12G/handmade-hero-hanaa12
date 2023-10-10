@@ -131,3 +131,23 @@ count maximum value is 1
 - Buttons : gamepad A, gamepad B, gamepad x, gamepad y, left shoulder, right shoulder
 - Swap old controllers, min, max, swap macro todo
 - IsAnalog: separate offset movement to accept analog input and digital input
+
+
+
+Day 14: Platform independent memory
+- Normally has a game start up which we allocate game state, then later delete game state when game exit
+- More allocations introduce more failure point duing program, maybe get forgotten
+- struct game_memory
+- Separate game memory into segments: One hold permanent data during game runtime which need to be persist between
+frame to frame, one is scratch memory which can be throw away if not need
+- struct game_state: first segment
+- Got rid of local_persist in game
+- Macros for megabytes, gigabytes, kilobytes 
+- Only after succesfully allocate memory, game is allowed to run
+- We need fixed location for Permanent storage
+
+- Assertion Function
+- BUild.bat debug build
+
+- Passing timing info to game: game_clock into input
+

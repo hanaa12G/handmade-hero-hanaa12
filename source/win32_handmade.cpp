@@ -18,6 +18,10 @@
 #define internal_func static
 #endif
 
+#define KILOBYTES(n) 1024l * (n)
+#define MEGABYTES(n) 1024l * KILOBYTES(n)
+#define GIGABYTES(n) 1024l * MEGABYTES(n)
+
 // DWORD WINAPI XInputGetState (DWORD dwUserIndex, XINPUT_STATE* pState)
 using x_input_get_state = DWORD WINAPI (DWORD, XINPUT_STATE*);
 DWORD WINAPI XInputGetStateStub (DWORD, XINPUT_STATE*)
@@ -110,8 +114,8 @@ struct win32_application_data
   LPDIRECTSOUNDBUFFER    SecondarySoundBuffer;
 
   win32_sound_output*    SoundOutput;
-  game_input_controllers NewInputs;
-  game_input_controllers OldInputs;
+  game_inputs NewInputs;
+  game_inputs OldInputs;
 };
 
 
@@ -621,6 +625,22 @@ int wWinMain(HINSTANCE hInstance,
   }
 
 
+  game_memory GameMemory = {};
+  GameMemory.PermanentStorageSize = MEGABYTES(32);
+  GameMemory.TransientStorageSize = MEGABYTES(1);
+
+  unsigned long TotalGameMemoryBytes = GameMemory.PermanentStorageSize + GameMemory.TransientStorageSize;
+#ifdef HANDMADE_INTERNAL
+  // Fix address to reload / debug
+  void* GameFixedAddress = (void*) 0x00000000bbdf0000ll;
+#else
+  void* GameFixedAddress = (void*) 0x0ll;
+#endif
+  void* GameMemoryBuffer = VirtualAlloc(GameFixedAddress, TotalGameMemoryBytes, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+  GameMemory.PermanentStorage = GameMemoryBuffer;
+  GameMemory.TransientStorage = (char*) GameMemory.PermanentStorage + GameMemory.PermanentStorageSize;
+
+
   Win32AppIsRunning = true;
 
 
@@ -635,8 +655,8 @@ int wWinMain(HINSTANCE hInstance,
     uint64_t ProcessorCounterStart = __rdtsc();
     MSG Msg;
 
-    game_input_controllers* NewInputs = &ApplicationData.NewInputs;
-    game_input_controllers* OldInputs = &ApplicationData.OldInputs;
+    game_inputs* NewInputs = &ApplicationData.NewInputs;
+    game_inputs* OldInputs = &ApplicationData.OldInputs;
 
     while (PeekMessageW(&Msg, Window, 0, 0, PM_REMOVE))
     {
@@ -769,7 +789,12 @@ int wWinMain(HINSTANCE hInstance,
       GameSoundBuffer.Samples = Samples;
     }
 
-    GameUpdateAndRender(&GameDrawingBuffer, &GameSoundBuffer, NewInputs);
+    LARGE_INTEGER CurrentTimeCount;
+    QueryPerformanceCounter(&CurrentTimeCount);
+    LONGLONG EslapsedTime = (CurrentTimeCount.QuadPart - FrameStartCount.QuadPart) * 1000 / ProcessorFrequency.QuadPart ;
+    NewInputs->Timers.EslapsedTime = EslapsedTime;
+
+    GameUpdateAndRender(&GameDrawingBuffer, &GameSoundBuffer, NewInputs, &GameMemory);
 
     if (SoundIsValid)   
     {
@@ -786,7 +811,7 @@ int wWinMain(HINSTANCE hInstance,
     *NewInputs = {};
 
     QueryPerformanceCounter(&FrameEndCount);
-    LONGLONG EslapsedTime = (FrameEndCount.QuadPart - FrameStartCount.QuadPart) * 1000 / ProcessorFrequency.QuadPart ;
+    EslapsedTime = (FrameEndCount.QuadPart - FrameStartCount.QuadPart) * 1000 / ProcessorFrequency.QuadPart ;
     int FPS = ProcessorFrequency.QuadPart  / (FrameEndCount.QuadPart - FrameStartCount.QuadPart);
     uint64_t ProcessorCounterEnd = __rdtsc();
     uint64_t ProcessorCounterEslapsed = ProcessorCounterEnd - ProcessorCounterStart;

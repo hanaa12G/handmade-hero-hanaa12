@@ -52,14 +52,45 @@ struct game_input_controller
   };
 };
 
-struct game_input_controllers
+
+struct game_clocks
 {
+  long long EslapsedTime;
+};
+
+
+struct game_inputs
+{
+  game_clocks Timers;
   game_input_controller Controllers[4];
 };
 
 
+struct game_memory
+{
+  void* PermanentStorage;
+  uint64_t PermanentStorageSize;
+
+  void* TransientStorage;
+  uint64_t TransientStorageSize;
+};
+
+struct game_state
+{
+  bool IsInitialized;
+  int XOffset = 0;
+  int YOffset = 0;
+  int XSpeed  = 0;
+  int YSpeed  = 1;
+  unsigned ToneHz = 260;
+  int Acceleration = 1;
+};
+
+
+
 void GameUpdateAndRender(game_offscreen_buffer* Buffer,
                          game_sound_output_buffer* SoundBuffer,
-                         game_input_controllers* Inputs);
+                         game_inputs* Inputs,
+                         game_memory* Memory);
 
 #endif

@@ -7,6 +7,16 @@
 
 
 #define PI 3.14159265359f
+#ifdef HANDMADE_SLOW 
+#define HANDMADE_ASSERT(condition) \
+  if (!(condition)) \
+  { \
+    char* s = NULL; \
+    *s = 0; \
+  }
+#else
+#define HANDMADE_ASSERT(condition)
+#endif
 
 
 
@@ -73,15 +83,22 @@ RenderWeirdRectangle(game_offscreen_buffer* Buffer, int XOffset, int YOffset)
 
 void GameUpdateAndRender(game_offscreen_buffer* Buffer,
   game_sound_output_buffer* SoundBuffer,
-  game_input_controllers* Inputs)
+  game_inputs* Inputs,
+  game_memory* Memory)
 {
-  local_persist int XOffset = 0;
-  local_persist int YOffset = 0;
-  local_persist int XSpeed  = 0;
-  local_persist int YSpeed  = 1;
-  local_persist unsigned ToneHz = 260;
+  HANDMADE_ASSERT(Memory->PermanentStorageSize >= sizeof(game_state));
 
-
+  game_state* GameState = (game_state*) (Memory->PermanentStorage);
+  if (!GameState->IsInitialized)
+  {
+    GameState->IsInitialized = true;
+    GameState->XOffset = 0;
+    GameState->YOffset = 0;
+    GameState->XSpeed  = 0;
+    GameState->YSpeed  = 1;
+    GameState->ToneHz = 260;
+    GameState->Acceleration = 1;
+  }
 
   game_input_controller* Input = &Inputs->Controllers[0];
 
@@ -90,36 +107,36 @@ void GameUpdateAndRender(game_offscreen_buffer* Buffer,
   }
   else
   {
-    const int Acceleration = 1;
     game_button_state LeftButton = Input->LeftButton;
     game_button_state RightButton = Input->RightButton;
     game_button_state UpButton = Input->UpButton;
     game_button_state DownButton = Input->DownButton;
     if (LeftButton.HalfTransitionCount > 0 && LeftButton.IsButtonEndedDown)
     {
-      XSpeed += Acceleration;
+      GameState->XSpeed += GameState->Acceleration;
     }
     if (RightButton.HalfTransitionCount > 0 && RightButton.IsButtonEndedDown)
     {
-      XSpeed -= Acceleration;
+      GameState->XSpeed -= GameState->Acceleration;
     }
 
     if (UpButton.HalfTransitionCount > 0 && UpButton.IsButtonEndedDown)
     {
-      YOffset -= YSpeed;
-      ToneHz -= 10;
+      GameState->YOffset -= GameState->YSpeed;
+      GameState->ToneHz -= 10;
     }
 
     if (DownButton.HalfTransitionCount > 0 && DownButton.IsButtonEndedDown)
     {
-      YOffset += YSpeed;
-      ToneHz += 10;
+      GameState->YOffset += GameState->YSpeed;
+      GameState->ToneHz += 10;
     }
     
   }
 
-  XOffset += XSpeed;
-  YOffset += YSpeed;
-  GameOutputSound(SoundBuffer, ToneHz);
-  RenderWeirdRectangle(Buffer, XOffset, YOffset);
+  GameState->XOffset += GameState->XSpeed;
+  GameState->YOffset += GameState->YSpeed;
+  GameOutputSound(SoundBuffer, GameState->ToneHz);
+  RenderWeirdRectangle(Buffer, GameState->XOffset, GameState->YOffset);
 }
+
