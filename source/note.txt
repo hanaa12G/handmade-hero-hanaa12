@@ -151,3 +151,18 @@ frame to frame, one is scratch memory which can be throw away if not need
 
 - Passing timing info to game: game_clock into input
 
+
+Day 15: Independent file API
+- We open file and pulling and pulling, each time the file offset advance, each time we can introduce failure point.
+We also don't care about streaming data yet. Multiple thread use same file handle ?
+- Hard drive read maybe slow
+- Common procedure: OpenFile, FileSize, ReserveMemory, ReadFile, CloseFIle
+- Introduce nwe function for platform layer (put it in game header): 
+  - PlatformReadEntireFile
+  - PlatformFreeFileMemory
+  - PlatformWriteEntireFIle
+- WIn32 API: CreateFile(), GetFileSize(), CLoseHandle(), ReadFile()
+- Safe truncate from uint64 to uint32
+- Assert bytes read with initial bytes we got for cases like file resize while reading
+- Need file size as well, create debug_read_file_result struct
+

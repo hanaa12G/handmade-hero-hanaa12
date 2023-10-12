@@ -131,6 +131,79 @@ Win32PrintPerfInformation(long long EslapsedTime, int FPS, unsigned long long Pr
 }
 
 
+internal_func bool
+PlatformReadEntireFile(char const* FileName, debug_file_result* Result)
+{
+  HANDLE FileHandle = CreateFileA(FileName,
+                                  GENERIC_READ,
+                                  FILE_SHARE_READ,
+                                  0,
+                                  OPEN_EXISTING,
+                                  FILE_ATTRIBUTE_NORMAL,
+                                  0);
+  if (FileHandle != INVALID_HANDLE_VALUE)
+  {
+    LARGE_INTEGER FileSize;
+    if (GetFileSizeEx(FileHandle, &FileSize))
+    {
+      uint64_t Size = FileSize.QuadPart;
+      DWORD SizeTruncated = SafeTruncateNumber(Size);
+
+      void* Buffer = VirtualAlloc(0, SizeTruncated, MEM_COMMIT, PAGE_READWRITE);
+      if (Buffer)
+      {
+        DWORD BytesRead = 0;
+        if (ReadFile(FileHandle, Buffer, SizeTruncated, &BytesRead, 0) && BytesRead == SizeTruncated)
+        {
+          Result->Size = BytesRead;
+          Result->Memory = Buffer;
+          CloseHandle(FileHandle);
+          return true;
+        }
+        else
+        {
+          VirtualFree(Buffer, 0, MEM_RELEASE);
+        }
+      }
+    }
+
+    CloseHandle(FileHandle);
+  }
+  return false;
+}
+
+internal_func bool
+PlatformWriteEntireFile(char const* FileName, void const* Buffer, uint64_t Size) 
+{
+  HANDLE FileHandle = CreateFileA(FileName,
+                                  GENERIC_WRITE,
+                                  0,
+                                  0,
+                                  CREATE_ALWAYS,
+                                  FILE_ATTRIBUTE_NORMAL,
+                                  0);
+
+  if (FileHandle != INVALID_HANDLE_VALUE)
+  {
+    DWORD BytesToWrite = SafeTruncateNumber(Size);
+    DWORD BytesWritten = 0;
+
+    if (WriteFile(FileHandle, Buffer, BytesToWrite, &BytesWritten, 0) && BytesWritten == BytesToWrite)
+    {
+      CloseHandle(FileHandle);
+      return true;
+    }
+    CloseHandle(FileHandle);
+  }
+  return false;
+}
+
+internal_func void 
+PlatformFreeFileMemory(debug_file_result* File)
+{
+  VirtualFree(File->Memory, 0, MEM_RELEASE);
+}
+
 internal_func void
 Win32ReadXInputButtonState(game_button_state* OldState, game_button_state* NewState, int ButtonBit)
 {

@@ -88,6 +88,20 @@ struct game_state
 
 
 
+#ifdef HANDMADE_INTERNAL
+struct debug_file_result
+{
+  void* Memory;
+  uint64_t Size;
+};
+
+bool PlatformReadEntireFile(char const* FileName, debug_file_result* Result);
+bool PlatformWriteEntireFile(char const* FileName, void const* Buffer, uint64_t Size); 
+void PlatformFreeFileMemory(debug_file_result* File);
+
+#endif
+
+
 void GameUpdateAndRender(game_offscreen_buffer* Buffer,
                          game_sound_output_buffer* SoundBuffer,
                          game_inputs* Inputs,

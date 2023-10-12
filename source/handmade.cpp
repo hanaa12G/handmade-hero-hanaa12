@@ -18,6 +18,13 @@
 #define HANDMADE_ASSERT(condition)
 #endif
 
+internal_func uint32_t
+SafeTruncateNumber(uint64_t Input)
+{
+  HANDMADE_ASSERT(Input <= 0xffffffff);
+  return (uint32_t) Input;
+}
+
 
 
 internal_func void
@@ -98,6 +105,14 @@ void GameUpdateAndRender(game_offscreen_buffer* Buffer,
     GameState->YSpeed  = 1;
     GameState->ToneHz = 260;
     GameState->Acceleration = 1;
+
+    debug_file_result Result;
+    if (PlatformReadEntireFile(__FILE__, &Result))
+    {
+      char const* TempOutFile = "W:\\handmade-hero\\temp.out";
+      PlatformWriteEntireFile(TempOutFile, Result.Memory, Result.Size);
+      PlatformFreeFileMemory(&Result);
+    }
   }
 
   game_input_controller* Input = &Inputs->Controllers[0];
