@@ -1,6 +1,17 @@
 #ifndef HANDMADE_HPP
 #define HANDMADE_HPP
 
+#ifndef HANDMDE_GLOBAL_DEFINE
+#define HANDMDE_GLOBAL_DEFINE
+
+#define internal_func static
+#define local_persist static
+#define global_variable static
+
+#endif 
+
+
+
 struct game_offscreen_buffer 
 {
   void*      Data;
@@ -95,9 +106,9 @@ struct debug_file_result
   uint64_t Size;
 };
 
-bool PlatformReadEntireFile(char const* FileName, debug_file_result* Result);
-bool PlatformWriteEntireFile(char const* FileName, void const* Buffer, uint64_t Size); 
-void PlatformFreeFileMemory(debug_file_result* File);
+internal_func bool PlatformReadEntireFile(char const* FileName, debug_file_result* Result);
+internal_func bool PlatformWriteEntireFile(char const* FileName, void const* Buffer, uint64_t Size); 
+internal_func void PlatformFreeFileMemory(debug_file_result* File);
 
 #endif
 

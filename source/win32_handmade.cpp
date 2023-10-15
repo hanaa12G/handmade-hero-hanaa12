@@ -13,9 +13,11 @@
 
 #ifndef HANDMDE_GLOBAL_DEFINE
 #define HANDMDE_GLOBAL_DEFINE
+
 #define global_variable static
 #define local_persist static
 #define internal_func static
+
 #endif
 
 #define KILOBYTES(n) 1024l * (n)
@@ -243,7 +245,7 @@ RenderWeirdRectangle(win32_offscreen_buffer* Buffer, int XOffset, int YOffset)
 
 
 internal_func void
-Win32ResizeDIBSection(win32_offscreen_buffer* Buffer, int X, int Y, int Width, int Height)
+Win32ResizeDIBSection(win32_offscreen_buffer* Buffer, int Width, int Height)
 {
   assert(Width >= 0 && Height >= 0 && Buffer);
   if (Buffer->Data)
@@ -252,7 +254,7 @@ Win32ResizeDIBSection(win32_offscreen_buffer* Buffer, int X, int Y, int Width, i
     Buffer->Data = NULL;
   }
 
-  int BitsPerPixel = 32;
+  int16_t BitsPerPixel = 32;
   Buffer->Width = Width;
   Buffer->Height = Height;
   Buffer->Pitch = BytesPerPixel * Buffer->Width;
@@ -274,8 +276,7 @@ Win32ResizeDIBSection(win32_offscreen_buffer* Buffer, int X, int Y, int Width, i
 internal_func void
 Win32UpdateWindow(win32_offscreen_buffer* Buffer,
                   HDC DeviceContext,
-                  RECT* ClientRect,
-                  int X, int Y, int Width, int Height)
+                  RECT* ClientRect)
 {
   StretchDIBits(DeviceContext,
   /*
@@ -331,8 +332,8 @@ Win32InitDSound(HWND Window, unsigned int SamplesPerSec, unsigned int BufferSize
   // [LEFT] [RIGHT] [LEFT] [RIGHT] .... [LEFT] [RIGHT]
   // |--48k samples per second-----|
 
-  int NumChannels = 2;
-  int BitsPerSample = 16;
+  int16_t NumChannels = 2;
+  int16_t BitsPerSample = 16;
 
   WAVEFORMATEX WaveFormat = {};
   WaveFormat.wFormatTag = WAVE_FORMAT_PCM;
@@ -492,11 +493,7 @@ Win32WindowProc(HWND Window,
       BeginPaint(Window, &PaintInfo);
       RECT ClientRect;
       GetClientRect(Window, &ClientRect);
-      int X = ClientRect.left;
-      int Y = ClientRect.top;
-      int Width = ClientRect.right - ClientRect.left;
-      int Height = ClientRect.bottom - ClientRect.top;
-      Win32UpdateWindow(&ApplicationData->Buffer, PaintInfo.hdc, &ClientRect, X, Y, Width, Height);
+      Win32UpdateWindow(&ApplicationData->Buffer, PaintInfo.hdc, &ClientRect);
       EndPaint(Window, &PaintInfo);
 
     } break;
@@ -504,11 +501,9 @@ Win32WindowProc(HWND Window,
     {
       RECT ClientRect;
       GetClientRect(Window, &ClientRect);
-      int X = ClientRect.left;
-      int Y = ClientRect.top;
       int Width = ClientRect.right - ClientRect.left;
       int Height = ClientRect.bottom - ClientRect.top;
-      Win32ResizeDIBSection(&ApplicationData->Buffer, X, Y, Width, Height);
+      Win32ResizeDIBSection(&ApplicationData->Buffer, Width, Height);
     } break;
 
     case WM_SYSKEYDOWN:
@@ -516,100 +511,7 @@ Win32WindowProc(HWND Window,
     case WM_KEYDOWN:
     case WM_KEYUP:
     {
-      uint8_t VKeyCode = WParam;
-      bool WasKeyDown  = (LParam & (1 << 30)) != 0; 
-      bool IsKeyDown   = (LParam & (1 << 31)) == 0;
-      game_input_controller* NewInput = &ApplicationData->NewInputs.Controllers[0];
-      game_input_controller* OldInput = &ApplicationData->OldInputs.Controllers[0];
-
-      if (WasKeyDown != IsKeyDown)
-      {
-        switch (VKeyCode)
-        {
-          case VK_UP:
-            {
-              if (ApplicationData->SoundOutput)
-              {
-                ApplicationData->SoundOutput->WavePeriod = ApplicationData->SoundOutput->SamplesPerSecond / ApplicationData->SoundOutput->ToneHz;
-              }
-
-              Win32ReadXInputButtonState(&OldInput->UpButton, &NewInput->UpButton, IsKeyDown); 
-              OutputDebugStringA("VK_UP\n");
-            } break;
-          case VK_DOWN:
-            {
-              if (ApplicationData->SoundOutput)
-              {
-                ApplicationData->SoundOutput->WavePeriod = ApplicationData->SoundOutput->SamplesPerSecond / ApplicationData->SoundOutput->ToneHz;
-              }
-              Win32ReadXInputButtonState(&OldInput->DownButton, &NewInput->DownButton, IsKeyDown); 
-              OutputDebugStringW(L"VK_DOWN\n");
-            } break;
-          case VK_LEFT:
-            {
-              Win32ReadXInputButtonState(&OldInput->LeftButton, &NewInput->LeftButton, IsKeyDown); 
-
-              OutputDebugStringA("VK_LEFT\n");
-
-            } break;
-          case VK_RIGHT:
-            {
-              Win32ReadXInputButtonState(&OldInput->RightButton, &NewInput->RightButton, IsKeyDown); 
-              OutputDebugStringW(L"VK_RIGHT\n");
-            } break;
-          case VK_SPACE:
-            {
-              OutputDebugStringW(L"VK_SPACE\n");
-            } break;
-          case VK_ESCAPE:
-            {
-              OutputDebugStringW(L"VK_ESCAPE\n");
-            } break;
-          case 'W':
-            {
-              OutputDebugStringW(L"W\n");
-            } break;
-          case 'A':
-            {
-              OutputDebugStringW(L"A\n");
-            } break;
-          case 'S':
-            {
-              OutputDebugStringW(L"S\n");
-            } break;
-          case 'D':
-            {
-              OutputDebugStringW(L"D\n");
-            } break;
-          case 'Q':
-            {
-              OutputDebugStringW(L"Q\n");
-            } break;
-          case 'E':
-            {
-              OutputDebugStringW(L"E\n");
-            } break;
-          case VK_F4:
-            {
-              bool IsAltDown = ((LParam & (1 << 29)) != 0);
-              if (IsAltDown)
-              {
-                Win32AppIsRunning = false;
-              }
-            } break;
-          default:
-            {
-            } break;
-        }
-      }
-    } break;
-    case WM_CLOSE:
-    {
-      Win32AppIsRunning = false;
-    } break;
-    case WM_QUIT:
-    {
-      Win32AppIsRunning = false;
+      HANDMADE_ASSERT(false); // These messages are handled externally in winMain()
     } break;
     case WM_ACTIVATEAPP:
     {
@@ -629,11 +531,125 @@ Win32WindowProc(HWND Window,
   return Res;
 }
 
+internal_func void
+Win32ProcessPendingMessages(game_input_controller* NewInput, game_input_controller* OldInput, win32_sound_output* SoundOutput)
+{
+  MSG Message;
+  while (PeekMessageW(&Message, 0, 0, 0, PM_REMOVE))
+  {
+    switch (Message.message)
+    {
+      case WM_CLOSE:
+      case WM_QUIT:
+        {
+          Win32AppIsRunning = false;
+        } break;
+      case WM_SYSKEYDOWN:
+      case WM_SYSKEYUP:
+      case WM_KEYDOWN:
+      case WM_KEYUP:
+        {
+          WPARAM WParam = Message.wParam;
+          LPARAM LParam = Message.lParam;
+
+          uint8_t VKeyCode = (uint8_t) WParam;
+          bool WasKeyDown  = (LParam & (1 << 30)) != 0; 
+          bool IsKeyDown   = (LParam & (1 << 31)) == 0;
+          if (WasKeyDown != IsKeyDown)
+          {
+            switch (VKeyCode)
+            {
+              case VK_UP:
+                {
+                  if (SoundOutput)
+                  {
+                    SoundOutput->WavePeriod = SoundOutput->SamplesPerSecond / SoundOutput->ToneHz;
+                  }
+
+                  Win32ReadXInputButtonState(&OldInput->UpButton, &NewInput->UpButton, IsKeyDown); 
+                  OutputDebugStringA("VK_UP\n");
+                } break;
+              case VK_DOWN:
+                {
+                  if (SoundOutput)
+                  {
+                    SoundOutput->WavePeriod = SoundOutput->SamplesPerSecond / SoundOutput->ToneHz;
+                  }
+                  Win32ReadXInputButtonState(&OldInput->DownButton, &NewInput->DownButton, IsKeyDown); 
+                  OutputDebugStringW(L"VK_DOWN\n");
+                } break;
+              case VK_LEFT:
+                {
+                  Win32ReadXInputButtonState(&OldInput->LeftButton, &NewInput->LeftButton, IsKeyDown); 
+
+                  OutputDebugStringA("VK_LEFT\n");
+
+                } break;
+              case VK_RIGHT:
+                {
+                  Win32ReadXInputButtonState(&OldInput->RightButton, &NewInput->RightButton, IsKeyDown); 
+                  OutputDebugStringW(L"VK_RIGHT\n");
+                } break;
+              case VK_SPACE:
+                {
+                  OutputDebugStringW(L"VK_SPACE\n");
+                } break;
+              case VK_ESCAPE:
+                {
+                  OutputDebugStringW(L"VK_ESCAPE\n");
+                } break;
+              case 'W':
+                {
+                  OutputDebugStringW(L"W\n");
+                } break;
+              case 'A':
+                {
+                  OutputDebugStringW(L"A\n");
+                } break;
+              case 'S':
+                {
+                  OutputDebugStringW(L"S\n");
+                } break;
+              case 'D':
+                {
+                  OutputDebugStringW(L"D\n");
+                } break;
+              case 'Q':
+                {
+                  OutputDebugStringW(L"Q\n");
+                } break;
+              case 'E':
+                {
+                  OutputDebugStringW(L"E\n");
+                } break;
+              case VK_F4:
+                {
+                  bool IsAltDown = ((LParam & (1 << 29)) != 0);
+                  if (IsAltDown)
+                  {
+                    Win32AppIsRunning = false;
+                  }
+                } break;
+              default:
+                {
+                } break;
+            }
+          }
+        } break;
+        default:
+        {
+          TranslateMessage(&Message);
+          DispatchMessageW(&Message);
+        }
+    }
+  }
+}
+
 
 int wWinMain(HINSTANCE hInstance,
-  HINSTANCE hPrevInstance,
-  LPWSTR     lpCmdLine,
-  int       nShowCmd)
+  HINSTANCE /* hPrevInstance */,
+  LPWSTR    /* lpCmdLine */,
+  int       /*nShowCmd*/)
 {
   LoadXInputDll();
   win32_application_data ApplicationData = {};
@@ -702,7 +718,7 @@ int wWinMain(HINSTANCE hInstance,
   GameMemory.PermanentStorageSize = MEGABYTES(32);
   GameMemory.TransientStorageSize = MEGABYTES(1);
 
-  unsigned long TotalGameMemoryBytes = GameMemory.PermanentStorageSize + GameMemory.TransientStorageSize;
+  uint64_t TotalGameMemoryBytes = GameMemory.PermanentStorageSize + GameMemory.TransientStorageSize;
 #ifdef HANDMADE_INTERNAL
   // Fix address to reload / debug
   void* GameFixedAddress = (void*) 0x00000000bbdf0000ll;
@@ -726,21 +742,11 @@ int wWinMain(HINSTANCE hInstance,
   while (Win32AppIsRunning)
   {
     uint64_t ProcessorCounterStart = __rdtsc();
-    MSG Msg;
 
     game_inputs* NewInputs = &ApplicationData.NewInputs;
     game_inputs* OldInputs = &ApplicationData.OldInputs;
 
-    while (PeekMessageW(&Msg, Window, 0, 0, PM_REMOVE))
-    {
-      TranslateMessage(&Msg);
-      DispatchMessageW(&Msg);
-
-      if (Msg.message == WM_QUIT)
-      {
-        Win32AppIsRunning = false;
-      }
-    }
+    Win32ProcessPendingMessages(&NewInputs->Controllers[0], &OldInputs->Controllers[0], &SoundOutput);
 
     for (int ControllerIndex = 0; ControllerIndex < XUSER_MAX_COUNT; ++ControllerIndex)
     {
@@ -804,8 +810,6 @@ int wWinMain(HINSTANCE hInstance,
     RECT ClientRect;
     HDC DeviceContext = GetDC(Window);
     GetClientRect(Window, &ClientRect);
-    int WindowWidth = ClientRect.right - ClientRect.left;
-    int WindowHeight = ClientRect.bottom - ClientRect.top;
 
     game_offscreen_buffer GameDrawingBuffer;
     GameDrawingBuffer.Data = ApplicationData.Buffer.Data;
@@ -838,14 +842,14 @@ int wWinMain(HINSTANCE hInstance,
 
         Distance = LastWriteCursor - WriteCursor;
         BytesToWrite = 0;
-        BytesToWrite = (Distance >= BytesToWriteUpperBound) ? 0 : (BytesToWriteUpperBound - Distance);
+        BytesToWrite = ((unsigned)Distance >= BytesToWriteUpperBound) ? 0 : (BytesToWriteUpperBound - Distance);
       }
       else
       {
         ByteToLock = LastWriteCursor;
         Distance = LastWriteCursor + SoundOutput.SecondaryBufferSize - WriteCursor;
         BytesToWrite = 0;
-        BytesToWrite = (Distance >= BytesToWriteUpperBound) ? 0 : (BytesToWriteUpperBound - Distance);
+        BytesToWrite = ((unsigned) Distance >= BytesToWriteUpperBound) ? 0 : (BytesToWriteUpperBound - Distance);
       }
 
       SoundIsValid = true;
@@ -874,7 +878,7 @@ int wWinMain(HINSTANCE hInstance,
       Win32FillSoundBuffer(SoundBuffer, &SoundOutput, ByteToLock, BytesToWrite, &GameSoundBuffer);
     }
 
-    Win32UpdateWindow(&ApplicationData.Buffer, DeviceContext, &ClientRect, 0, 0, WindowWidth, WindowHeight);
+    Win32UpdateWindow(&ApplicationData.Buffer, DeviceContext, &ClientRect);
 
     ReleaseDC(Window, DeviceContext);
 
@@ -885,7 +889,7 @@ int wWinMain(HINSTANCE hInstance,
 
     QueryPerformanceCounter(&FrameEndCount);
     EslapsedTime = (FrameEndCount.QuadPart - FrameStartCount.QuadPart) * 1000 / ProcessorFrequency.QuadPart ;
-    int FPS = ProcessorFrequency.QuadPart  / (FrameEndCount.QuadPart - FrameStartCount.QuadPart);
+    int FPS = (int) (ProcessorFrequency.QuadPart  / (FrameEndCount.QuadPart - FrameStartCount.QuadPart));
     uint64_t ProcessorCounterEnd = __rdtsc();
     uint64_t ProcessorCounterEslapsed = ProcessorCounterEnd - ProcessorCounterStart;
 

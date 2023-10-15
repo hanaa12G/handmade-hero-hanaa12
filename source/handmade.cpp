@@ -1,11 +1,6 @@
 #include "handmade.hpp"
 #include <cstdint>
 
-#define internal_func static
-#define local_persist static
-#define global_variable static
-
-
 #define PI 3.14159265359f
 #ifdef HANDMADE_SLOW 
 #define HANDMADE_ASSERT(condition) \
@@ -41,7 +36,7 @@ GameOutputSound(game_sound_output_buffer* SoundOutputBuffer, unsigned ToneHz)
 
   float AngleStep = (2 * PI / (float) WavePeriod);
 
-  for (int SampleIndex = 0;
+  for (unsigned SampleIndex = 0;
       SampleIndex < SampleCountToOutput;
       ++SampleIndex)
   {
