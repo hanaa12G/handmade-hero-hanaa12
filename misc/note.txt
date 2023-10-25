@@ -166,3 +166,13 @@ We also don't care about streaming data yet. Multiple thread use same file handl
 - Assert bytes read with initial bytes we got for cases like file resize while reading
 - Need file size as well, create debug_read_file_result struct
 
+
+Day 17: Unify keyboard and gamepad
+- 4 gamepad + 1 keyboard -> game_inputs controllers
+- Only copy endedDown to next frame, we only refresh halftransitionCount and count it for each frame
+- assert processkeyboardmessage to check ended down is not the same as last frame: we only get message when key state change
+- dead zone processing: just copy line by line since we don't have gamepad yet
+- wasd -> move up down left right, comparable to stick value, now remove max x, min x, max y, min y -> analog value is now move
+to digital button in game, only keep average analog value
+- keyboard up, right, left, down are now named as action up, action down, action left, action right
+- Stick average thresshold, DPAD 

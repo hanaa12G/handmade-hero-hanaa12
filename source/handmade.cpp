@@ -13,6 +13,9 @@
 #define HANDMADE_ASSERT(condition)
 #endif
 
+
+#define ARRAY_SIZE(x) sizeof((x)) / sizeof((x)[0])
+
 internal_func uint32_t
 SafeTruncateNumber(uint64_t Input)
 {
@@ -96,10 +99,7 @@ void GameUpdateAndRender(game_offscreen_buffer* Buffer,
     GameState->IsInitialized = true;
     GameState->XOffset = 0;
     GameState->YOffset = 0;
-    GameState->XSpeed  = 0;
-    GameState->YSpeed  = 1;
     GameState->ToneHz = 260;
-    GameState->Acceleration = 1;
 
     debug_file_result Result;
     if (PlatformReadEntireFile(__FILE__, &Result))
@@ -110,42 +110,42 @@ void GameUpdateAndRender(game_offscreen_buffer* Buffer,
     }
   }
 
-  game_input_controller* Input = &Inputs->Controllers[0];
 
-  if (Input->IsAnalog)
+  for (unsigned ControllerIndex = 0;
+       ControllerIndex < ARRAY_SIZE(Inputs->Controllers);
+       ++ControllerIndex)
   {
+    game_input_controller* Controller = &Inputs->Controllers[ControllerIndex];
+
+    if (Controller->IsAnalog)
+    {
+      GameState->XOffset += (int) (4.0f * Controller->StickAverageX);
+      GameState->YOffset += (int) (4.0f * Controller->StickAverageY);
+      GameState->ToneHz  = 256 + (int) (128.0f * Controller->StickAverageY);
+    }
+    else
+    {
+      if (Controller->MoveLeft.EndedDown)
+      {
+        GameState->XOffset += 1;
+      }
+      if (Controller->MoveRight.EndedDown)
+      {
+        GameState->XOffset -= 1;
+      }
+      if (Controller->MoveUp.EndedDown)
+      {
+        GameState->YOffset += 1;
+        GameState->ToneHz = 256 + 128;
+      }
+      if (Controller->MoveDown.EndedDown)
+      {
+        GameState->YOffset -= 1;
+        GameState->ToneHz = 256 - 128;
+      }
+    }
   }
-  else
-  {
-    game_button_state LeftButton = Input->LeftButton;
-    game_button_state RightButton = Input->RightButton;
-    game_button_state UpButton = Input->UpButton;
-    game_button_state DownButton = Input->DownButton;
-    if (LeftButton.HalfTransitionCount > 0 && LeftButton.IsButtonEndedDown)
-    {
-      GameState->XSpeed += GameState->Acceleration;
-    }
-    if (RightButton.HalfTransitionCount > 0 && RightButton.IsButtonEndedDown)
-    {
-      GameState->XSpeed -= GameState->Acceleration;
-    }
 
-    if (UpButton.HalfTransitionCount > 0 && UpButton.IsButtonEndedDown)
-    {
-      GameState->YOffset -= GameState->YSpeed;
-      GameState->ToneHz -= 10;
-    }
-
-    if (DownButton.HalfTransitionCount > 0 && DownButton.IsButtonEndedDown)
-    {
-      GameState->YOffset += GameState->YSpeed;
-      GameState->ToneHz += 10;
-    }
-    
-  }
-
-  GameState->XOffset += GameState->XSpeed;
-  GameState->YOffset += GameState->YSpeed;
   GameOutputSound(SoundBuffer, GameState->ToneHz);
   RenderWeirdRectangle(Buffer, GameState->XOffset, GameState->YOffset);
 }

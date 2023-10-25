@@ -29,7 +29,7 @@ struct game_sound_output_buffer
 
 struct game_button_state
 {
-  bool IsButtonEndedDown;
+  bool EndedDown;
   int  HalfTransitionCount;
 };
 
@@ -37,28 +37,30 @@ struct game_button_state
 struct game_input_controller
 {
   bool IsAnalog;
-
-  float StartX;
-  float EndX;
-  float MaxX;
-
-  float StartY;
-  float EndY;
-  float MaxY;
+  float StickAverageX;
+  float StickAverageY;
 
   union
   {
-    game_button_state Buttons[6];
+    game_button_state Buttons[12];
 
     struct 
     {
-      game_button_state LeftButton;
-      game_button_state RightButton;
-      game_button_state UpButton;
-      game_button_state DownButton;
+      game_button_state MoveLeft;
+      game_button_state MoveRight;
+      game_button_state MoveUp;
+      game_button_state MoveDown;
+
+      game_button_state ActionLeft;
+      game_button_state ActionRight;
+      game_button_state ActionUp;
+      game_button_state ActionDown;
 
       game_button_state LeftShoulderButton;
       game_button_state RightShoulderButton;
+
+      game_button_state StartButton;
+      game_button_state BackButton;
     };
   };
 };
@@ -70,11 +72,13 @@ struct game_clocks
 };
 
 
+#define GAMEINPUT_KEYBOARD_INDEX 0
 struct game_inputs
 {
   game_clocks Timers;
-  game_input_controller Controllers[4];
+  game_input_controller Controllers[5];
 };
+
 
 
 struct game_memory
@@ -91,10 +95,7 @@ struct game_state
   bool IsInitialized;
   int XOffset = 0;
   int YOffset = 0;
-  int XSpeed  = 0;
-  int YSpeed  = 1;
   unsigned ToneHz = 260;
-  int Acceleration = 1;
 };
 
 

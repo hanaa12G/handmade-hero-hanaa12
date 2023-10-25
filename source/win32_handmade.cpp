@@ -207,10 +207,38 @@ PlatformFreeFileMemory(debug_file_result* File)
 }
 
 internal_func void
-Win32ReadXInputButtonState(game_button_state* OldState, game_button_state* NewState, int ButtonBit)
+Win32ProcessXInputButtonState(DWORD ButtonsState,
+  DWORD ButtonBit,
+  game_button_state* OldState,
+  game_button_state* NewState)
 {
-  NewState->IsButtonEndedDown = ButtonBit;
-  NewState->HalfTransitionCount = (NewState->IsButtonEndedDown != OldState->IsButtonEndedDown) ? 1 : 0;
+  NewState->EndedDown = ((ButtonsState & ButtonBit) == ButtonBit); // TODO (hanasou): Verify this is to allow only one button pressed at a time
+  NewState->HalfTransitionCount = (NewState->EndedDown != OldState->EndedDown) ? 1 : 0;
+}
+
+internal_func void
+Win32ProcessXInputStickValue(SHORT Value, SHORT DeadZoneValue, float* NormalizedValue)
+{
+  if (Value >= DeadZoneValue)
+  {
+    *NormalizedValue = (float) Value / (32767.0f - (float) DeadZoneValue);
+  }
+  else if (Value <= -DeadZoneValue)
+  {
+    *NormalizedValue = (float) Value / (32768.0f - (float) DeadZoneValue);
+  }
+  else
+  {
+    *NormalizedValue = 0.0f;
+  }
+}
+
+internal_func void
+Win32ReadKeyboardButtonState(game_button_state*, game_button_state* NewState, int ButtonBit)
+{
+  HANDMADE_ASSERT(NewState->EndedDown != (bool) (ButtonBit));
+  NewState->EndedDown = (bool) ButtonBit;
+  NewState->HalfTransitionCount += 1;
 }
 
 
@@ -532,7 +560,7 @@ Win32WindowProc(HWND Window,
 }
 
 internal_func void
-Win32ProcessPendingMessages(game_input_controller* NewInput, game_input_controller* OldInput, win32_sound_output* SoundOutput)
+Win32ProcessPendingMessages(game_input_controller* NewController, game_input_controller* OldController, win32_sound_output* SoundOutput)
 {
   MSG Message;
   while (PeekMessageW(&Message, 0, 0, 0, PM_REMOVE))
@@ -566,8 +594,7 @@ Win32ProcessPendingMessages(game_input_controller* NewInput, game_input_controll
                     SoundOutput->WavePeriod = SoundOutput->SamplesPerSecond / SoundOutput->ToneHz;
                   }
 
-                  Win32ReadXInputButtonState(&OldInput->UpButton, &NewInput->UpButton, IsKeyDown); 
-                  OutputDebugStringA("VK_UP\n");
+                  Win32ReadKeyboardButtonState(&OldController->ActionUp, &NewController->ActionUp, IsKeyDown); 
                 } break;
               case VK_DOWN:
                 {
@@ -575,20 +602,15 @@ Win32ProcessPendingMessages(game_input_controller* NewInput, game_input_controll
                   {
                     SoundOutput->WavePeriod = SoundOutput->SamplesPerSecond / SoundOutput->ToneHz;
                   }
-                  Win32ReadXInputButtonState(&OldInput->DownButton, &NewInput->DownButton, IsKeyDown); 
-                  OutputDebugStringW(L"VK_DOWN\n");
+                  Win32ReadKeyboardButtonState(&OldController->ActionDown, &NewController->ActionDown, IsKeyDown); 
                 } break;
               case VK_LEFT:
                 {
-                  Win32ReadXInputButtonState(&OldInput->LeftButton, &NewInput->LeftButton, IsKeyDown); 
-
-                  OutputDebugStringA("VK_LEFT\n");
-
+                  Win32ReadKeyboardButtonState(&OldController->ActionLeft, &NewController->ActionLeft, IsKeyDown); 
                 } break;
               case VK_RIGHT:
                 {
-                  Win32ReadXInputButtonState(&OldInput->RightButton, &NewInput->RightButton, IsKeyDown); 
-                  OutputDebugStringW(L"VK_RIGHT\n");
+                  Win32ReadKeyboardButtonState(&OldController->ActionRight, &NewController->ActionRight, IsKeyDown); 
                 } break;
               case VK_SPACE:
                 {
@@ -600,19 +622,19 @@ Win32ProcessPendingMessages(game_input_controller* NewInput, game_input_controll
                 } break;
               case 'W':
                 {
-                  OutputDebugStringW(L"W\n");
+                  Win32ReadKeyboardButtonState(&OldController->MoveUp, &NewController->MoveUp, IsKeyDown); 
                 } break;
               case 'A':
                 {
-                  OutputDebugStringW(L"A\n");
+                  Win32ReadKeyboardButtonState(&OldController->MoveLeft, &NewController->MoveLeft, IsKeyDown); 
                 } break;
               case 'S':
                 {
-                  OutputDebugStringW(L"S\n");
+                  Win32ReadKeyboardButtonState(&OldController->MoveDown, &NewController->MoveDown, IsKeyDown); 
                 } break;
               case 'D':
                 {
-                  OutputDebugStringW(L"D\n");
+                  Win32ReadKeyboardButtonState(&OldController->MoveRight, &NewController->MoveRight, IsKeyDown); 
                 } break;
               case 'Q':
                 {
@@ -746,64 +768,123 @@ int wWinMain(HINSTANCE hInstance,
     game_inputs* NewInputs = &ApplicationData.NewInputs;
     game_inputs* OldInputs = &ApplicationData.OldInputs;
 
-    Win32ProcessPendingMessages(&NewInputs->Controllers[0], &OldInputs->Controllers[0], &SoundOutput);
-
-    for (int ControllerIndex = 0; ControllerIndex < XUSER_MAX_COUNT; ++ControllerIndex)
+    game_input_controller* OldKeyboardController = &OldInputs->Controllers[GAMEINPUT_KEYBOARD_INDEX];
+    game_input_controller* NewKeyboardController = &NewInputs->Controllers[GAMEINPUT_KEYBOARD_INDEX];
+    game_input_controller ZeroController = {};
+    *NewKeyboardController = ZeroController;
+    
+    for (unsigned ButtonIndex = 0;
+      ButtonIndex < ARRAY_SIZE(NewKeyboardController->Buttons);
+      ++ButtonIndex)
     {
+      NewKeyboardController->Buttons[ButtonIndex].EndedDown = OldKeyboardController->Buttons[ButtonIndex].EndedDown;
+    }
+
+    Win32ProcessPendingMessages(NewKeyboardController, OldKeyboardController, &SoundOutput);
+
+    DWORD MaxControllerCount = (XUSER_MAX_COUNT >= ARRAY_SIZE(NewInputs->Controllers)) ? ARRAY_SIZE(NewInputs->Controllers) : XUSER_MAX_COUNT;
+    for (unsigned ControllerIndex = 0; ControllerIndex < MaxControllerCount; ++ControllerIndex)
+    {
+      unsigned OurControllerIndex = ControllerIndex + 1;
       XINPUT_STATE ControllerState = {};
       if (XInputGetState(ControllerIndex, &ControllerState) != ERROR_SUCCESS)
       {
         continue;
       }
-      game_input_controller* OldInput = &OldInputs->Controllers[ControllerIndex];
-      game_input_controller* NewInput = &NewInputs->Controllers[ControllerIndex];
+      game_input_controller* OldController = &OldInputs->Controllers[OurControllerIndex];
+      game_input_controller* NewController = &NewInputs->Controllers[OurControllerIndex];
 
       XINPUT_GAMEPAD* Pad = &ControllerState.Gamepad;
 
-      NewInput->IsAnalog = true;
+      NewController->IsAnalog = true;
 
+      // Read and normalize thumb stick value
       int16_t StickX = Pad->sThumbLX;
       int16_t StickY = Pad->sThumbLY;
+      float NormalizedStickX;
+      float NormalizedStickY;
+      Win32ProcessXInputStickValue(StickX, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE, &NormalizedStickX);
+      Win32ProcessXInputStickValue(StickY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE, &NormalizedStickY);
 
-      NewInput->StartX = OldInput->EndX;
-      NewInput->StartY = OldInput->EndY;
+      // if any DPAD is pressed, we override stick value to that button
+      bool DpadUp = Pad->wButtons & XINPUT_GAMEPAD_DPAD_UP;
+      bool DpadDown = Pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
+      bool DpadLeft = Pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
+      bool DpadRight = Pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
 
-      if (StickX >= 0)
+      if (DpadUp)
       {
-        NewInput->EndX = (float) StickX / 32767.0f;
+        NormalizedStickY = 1.0f;
       }
-      else
+      if (DpadDown)
       {
-        NewInput->EndX = (float) StickX / 32768.0f;
-      }
-
-      if (StickY >= 0)
+        NormalizedStickY = -1.0f;
+      } 
+      if (DpadRight)
       {
-        NewInput->EndY = (float) StickY / 32767.0f;
+        NormalizedStickX = 1.0f;
       }
-      else
+      if (DpadLeft)
       {
-        NewInput->EndY = (float) StickY / 32768.0f;
+        NormalizedStickX = -1.0f;
       }
 
-      NewInput->MaxX = (NewInput->StartX > NewInput->EndX) ? NewInput->StartX : NewInput->EndX;
-      NewInput->MaxY = (NewInput->StartY > NewInput->EndY) ? NewInput->StartY : NewInput->EndY;
+      // We can reuse Win32ProcessXInputButtonState with Stick value
+      // based on value we can fake the ButtonsState to be either 0 or 1
+      // the ButtonBit is always 1, then the two value can AND together
+      // and ButtonsState value dominates
 
-      // bool Up    = Pad->wButtons & XINPUT_GAMEPAD_DPAD_UP;
-      // bool Down  = Pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
-      // bool Left  = Pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
-      // bool Right = Pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
-      // bool Start = Pad->wButtons & XINPUT_GAMEPAD_START;
-      // bool Back  = Pad->wButtons & XINPUT_GAMEPAD_BACK;
+      Win32ProcessXInputButtonState((NormalizedStickX > 0.5f) ? 1 : 0,
+        1,
+        &OldController->MoveRight,
+        &NewController->MoveRight);
+      Win32ProcessXInputButtonState((NormalizedStickX < -0.5f) ? 1 : 0,
+        1,
+        &OldController->MoveLeft,
+        &NewController->MoveLeft);
+      Win32ProcessXInputButtonState((NormalizedStickY > 0.5f) ? 1 : 0,
+        1,
+        &OldController->MoveUp,
+        &NewController->MoveUp);
+      Win32ProcessXInputButtonState((NormalizedStickY < -0.5f) ? 1 : 0,
+        1,
+        &OldController->MoveDown,
+        &NewController->MoveDown);
 
 
-      Win32ReadXInputButtonState(&OldInput->LeftButton, &NewInput->LeftButton, Pad->wButtons & XINPUT_GAMEPAD_X);
-      Win32ReadXInputButtonState(&OldInput->RightButton, &NewInput->RightButton, Pad->wButtons & XINPUT_GAMEPAD_B);
-      Win32ReadXInputButtonState(&OldInput->UpButton, &NewInput->UpButton, Pad->wButtons & XINPUT_GAMEPAD_Y);
-      Win32ReadXInputButtonState(&OldInput->DownButton, &NewInput->DownButton, Pad->wButtons & XINPUT_GAMEPAD_A);
+      Win32ProcessXInputButtonState(Pad->wButtons,
+        Pad->wButtons & XINPUT_GAMEPAD_X,
+        &OldController->ActionLeft,
+        &NewController->ActionLeft);
+      Win32ProcessXInputButtonState(Pad->wButtons,
+        XINPUT_GAMEPAD_B,
+        &OldController->ActionRight,
+        &NewController->ActionRight);
+      Win32ProcessXInputButtonState(Pad->wButtons,
+        XINPUT_GAMEPAD_Y,
+        &OldController->ActionUp,
+        &NewController->ActionUp);
+      Win32ProcessXInputButtonState(Pad->wButtons,
+        XINPUT_GAMEPAD_A,
+        &OldController->ActionDown,
+        &NewController->ActionDown);
 
-      Win32ReadXInputButtonState(&OldInput->LeftShoulderButton, &NewInput->LeftShoulderButton, Pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER);
-      Win32ReadXInputButtonState(&OldInput->RightShoulderButton, &NewInput->RightShoulderButton, Pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER);
+      Win32ProcessXInputButtonState(Pad->wButtons,
+        XINPUT_GAMEPAD_LEFT_SHOULDER,
+        &OldController->LeftShoulderButton,
+        &NewController->LeftShoulderButton);
+      Win32ProcessXInputButtonState(Pad->wButtons,
+        XINPUT_GAMEPAD_RIGHT_SHOULDER,
+        &OldController->RightShoulderButton,
+        &NewController->RightShoulderButton);
+      Win32ProcessXInputButtonState(Pad->wButtons,
+        XINPUT_GAMEPAD_START,
+        &OldController->StartButton,
+        &NewController->StartButton);
+      Win32ProcessXInputButtonState(Pad->wButtons,
+        XINPUT_GAMEPAD_BACK,
+        &OldController->BackButton,
+        &NewController->StartButton);
     }
 
 
@@ -884,6 +965,7 @@ int wWinMain(HINSTANCE hInstance,
 
 
 
+    // Swap inputs, NewInputs become OldInputs, NewsInput can be clear or whatever
     *OldInputs = *NewInputs;
     *NewInputs = {};
 
