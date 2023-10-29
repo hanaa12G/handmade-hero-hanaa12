@@ -77,7 +77,8 @@ LoadXInputDll()
 
 global_variable bool       Win32AppIsRunning;
 global_variable int        BytesPerPixel = 4;
-global_variable bool       ShouldDisplayDebugInfo = false;
+global_variable bool       ShouldDisplayDebugInfo = true;
+global_variable LARGE_INTEGER ProcessorFrequency;
 
 struct win32_offscreen_buffer
 {
@@ -122,12 +123,12 @@ struct win32_application_data
 
 
 internal_func void
-Win32PrintPerfInformation(long long EslapsedTime, int FPS, unsigned long long ProcessorCounterEslapsed)
+Win32PrintPerfInformation(float EslapsedTime, int FPS, unsigned long long ProcessorCounterEslapsed)
 {
   if (ShouldDisplayDebugInfo)
   {
     char TimeDebugStr[128];
-    std::snprintf(TimeDebugStr, 128, "Frame: %lldms, FPS: %d, ProcessorCounter: %lluM\n", EslapsedTime, FPS, ProcessorCounterEslapsed / 1000000);
+    std::snprintf(TimeDebugStr, 128, "Frame: %fms, FPS: %d, ProcessorCounter: %lluM\n", EslapsedTime, FPS, ProcessorCounterEslapsed);
     OutputDebugStringA(TimeDebugStr);
   }
 }
@@ -668,6 +669,21 @@ Win32ProcessPendingMessages(game_input_controller* NewController, game_input_con
 }
 
 
+internal_func LARGE_INTEGER
+Win32GetWallClock()
+{
+  LARGE_INTEGER Value;
+  QueryPerformanceCounter(&Value);
+  return Value;
+}
+internal_func float
+Win32GetTimeElapsedMs(LARGE_INTEGER const* From, LARGE_INTEGER const* To)
+{
+  return (To->QuadPart - From->QuadPart) * 1000.0f / (float) ProcessorFrequency.QuadPart;
+}
+
+
+
 int wWinMain(HINSTANCE hInstance,
   HINSTANCE /* hPrevInstance */,
   LPWSTR    /* lpCmdLine */,
@@ -755,11 +771,12 @@ int wWinMain(HINSTANCE hInstance,
   Win32AppIsRunning = true;
 
 
-  LARGE_INTEGER FrameStartCount, FrameEndCount;
-  LARGE_INTEGER ProcessorFrequency;
   QueryPerformanceFrequency(&ProcessorFrequency);
+  LARGE_INTEGER FrameStartTime = Win32GetWallClock();
+  LARGE_INTEGER FrameEndTime = FrameStartTime;
 
-  QueryPerformanceCounter(&FrameStartCount);
+  int   ExpectedFramesPerSecond = 30;
+  float ExpectedFrameTime = (1000.0f /  ExpectedFramesPerSecond);
 
   while (Win32AppIsRunning)
   {
@@ -947,9 +964,8 @@ int wWinMain(HINSTANCE hInstance,
       GameSoundBuffer.Samples = Samples;
     }
 
-    LARGE_INTEGER CurrentTimeCount;
-    QueryPerformanceCounter(&CurrentTimeCount);
-    LONGLONG EslapsedTime = (CurrentTimeCount.QuadPart - FrameStartCount.QuadPart) * 1000 / ProcessorFrequency.QuadPart ;
+    LARGE_INTEGER CurrentTime = Win32GetWallClock();
+    float EslapsedTime = Win32GetTimeElapsedMs(&FrameStartTime, &CurrentTime);
     NewInputs->Timers.EslapsedTime = EslapsedTime;
 
     GameUpdateAndRender(&GameDrawingBuffer, &GameSoundBuffer, NewInputs, &GameMemory);
@@ -969,15 +985,32 @@ int wWinMain(HINSTANCE hInstance,
     *OldInputs = *NewInputs;
     *NewInputs = {};
 
-    QueryPerformanceCounter(&FrameEndCount);
-    EslapsedTime = (FrameEndCount.QuadPart - FrameStartCount.QuadPart) * 1000 / ProcessorFrequency.QuadPart ;
-    int FPS = (int) (ProcessorFrequency.QuadPart  / (FrameEndCount.QuadPart - FrameStartCount.QuadPart));
+    CurrentTime = Win32GetWallClock();
+    EslapsedTime = Win32GetTimeElapsedMs(&FrameStartTime, &CurrentTime);
+
+    if (ExpectedFrameTime > EslapsedTime)
+    {
+      while (ExpectedFrameTime > EslapsedTime)
+      {
+        CurrentTime = Win32GetWallClock();
+        EslapsedTime = Win32GetTimeElapsedMs(&FrameStartTime, &CurrentTime);
+      }
+    }
+    else
+    {
+      // TODO (hanasou): We missed a frame, should put a log here
+    }
+
+    FrameEndTime = Win32GetWallClock();
+    CurrentTime = FrameEndTime;
+    EslapsedTime = Win32GetTimeElapsedMs(&FrameStartTime, &CurrentTime);
+
+    int FPS = (int) (ProcessorFrequency.QuadPart  / (FrameEndTime.QuadPart - FrameStartTime.QuadPart));
     uint64_t ProcessorCounterEnd = __rdtsc();
     uint64_t ProcessorCounterEslapsed = ProcessorCounterEnd - ProcessorCounterStart;
 
     Win32PrintPerfInformation(EslapsedTime, FPS, ProcessorCounterEslapsed / 1'000'000);
-    FrameStartCount = FrameEndCount;
-
+    FrameStartTime = FrameEndTime;
   }
   return 0;
 }

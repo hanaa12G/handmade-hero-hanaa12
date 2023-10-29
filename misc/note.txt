@@ -176,3 +176,14 @@ Day 17: Unify keyboard and gamepad
 to digital button in game, only keep average analog value
 - keyboard up, right, left, down are now named as action up, action down, action left, action right
 - Stick average thresshold, DPAD 
+
+
+Day 18:
+- If we have variable update time (time for each frame), the monitor maybe has different update time, which can cause missing a frame if
+monitor udpate 2 time between 1 game interval. We want to give it 1 frame every time it update
+- If monitor has variable refresh rate: after we finish a frame, we're not sure that when the frame is really display, it either very long
+or very short, (gap time), we cant really know the gap time and we want to include the gap time to calculate physics & animations so it appear
+to be smooth:
++ Calculate seconds elapsed at the end of frame, then we put a while loop to stop us go to next iteration if we ends up early
++ Win32GetWallClock()
++ Win32GetSecondsElapsed()

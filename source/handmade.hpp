@@ -68,7 +68,7 @@ struct game_input_controller
 
 struct game_clocks
 {
-  long long EslapsedTime;
+  float EslapsedTime;
 };
 
 
