@@ -692,6 +692,12 @@ int wWinMain(HINSTANCE hInstance,
   LoadXInputDll();
   win32_application_data ApplicationData = {};
 
+  if (TIMERR_NOCANDO == timeBeginPeriod(1))
+  {
+    OutputDebugStringA("Get set resolution time\n");
+    return 1;
+  }
+
   WNDCLASSEXW WindowClass = {};
   WindowClass.cbSize = sizeof(WNDCLASSEXW);
   WindowClass.lpfnWndProc = &Win32WindowProc;
@@ -992,6 +998,7 @@ int wWinMain(HINSTANCE hInstance,
     {
       while (ExpectedFrameTime > EslapsedTime)
       {
+        Sleep(1);
         CurrentTime = Win32GetWallClock();
         EslapsedTime = Win32GetTimeElapsedMs(&FrameStartTime, &CurrentTime);
       }
