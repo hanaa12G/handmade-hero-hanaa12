@@ -77,7 +77,7 @@ LoadXInputDll()
 
 global_variable bool       Win32AppIsRunning;
 global_variable int        BytesPerPixel = 4;
-global_variable bool       ShouldDisplayDebugInfo = true;
+global_variable bool       ShouldDisplayDebugInfo = false;
 global_variable LARGE_INTEGER ProcessorFrequency;
 
 struct win32_offscreen_buffer
@@ -516,6 +516,12 @@ Win32WindowProc(HWND Window,
   LRESULT Res = 0;
   switch (Msg)
   {
+    case WM_CLOSE:
+    case WM_QUIT:
+    {
+      Win32AppIsRunning = false;
+      break;
+    }
     case WM_PAINT:
     {
       PAINTSTRUCT PaintInfo;
@@ -568,11 +574,6 @@ Win32ProcessPendingMessages(game_input_controller* NewController, game_input_con
   {
     switch (Message.message)
     {
-      case WM_CLOSE:
-      case WM_QUIT:
-        {
-          Win32AppIsRunning = false;
-        } break;
       case WM_SYSKEYDOWN:
       case WM_SYSKEYUP:
       case WM_KEYDOWN:
@@ -659,7 +660,7 @@ Win32ProcessPendingMessages(game_input_controller* NewController, game_input_con
             }
           }
         } break;
-        default:
+      default:
         {
           TranslateMessage(&Message);
           DispatchMessageW(&Message);
