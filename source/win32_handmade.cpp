@@ -785,6 +785,13 @@ int wWinMain(HINSTANCE hInstance,
   int   ExpectedFramesPerSecond = 30;
   float ExpectedFrameTime = (1000.0f /  ExpectedFramesPerSecond);
 
+
+#if HANDMADE_INTERNAL
+  int const LastCursorPositionCount = 60; // 30 locations stored for 2 cursors
+  DWORD LastCursorPositions[LastCursorPositionCount] = {};
+  int LastCursorPositionIndex = 0;
+#endif
+
   while (Win32AppIsRunning)
   {
     uint64_t ProcessorCounterStart = __rdtsc();
@@ -1008,6 +1015,18 @@ int wWinMain(HINSTANCE hInstance,
     {
       // TODO (hanasou): We missed a frame, should put a log here
     }
+
+#if HANDMADE_INTERNAL
+    {
+      SoundBuffer->GetCurrentPosition(&PlayCursor, &WriteCursor);
+      LastCursorPositions[LastCursorPositionIndex++] = PlayCursor;
+      LastCursorPositions[LastCursorPositionIndex++] = WriteCursor;
+      (void) LastCursorPositionIndex;
+
+      if (LastCursorPositionIndex >= LastCursorPositionCount) LastCursorPositionIndex = 0;
+    }
+#endif
+
 
     FrameEndTime = Win32GetWallClock();
     CurrentTime = FrameEndTime;
