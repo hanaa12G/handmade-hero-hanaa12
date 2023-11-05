@@ -87,6 +87,7 @@ struct win32_offscreen_buffer
   int        Width;
   int        Height;
   int        Pitch;
+  int        BytesPerPixel;
 };
 
 struct win32_window_size
@@ -244,6 +245,33 @@ Win32ReadKeyboardButtonState(game_button_state*, game_button_state* NewState, in
 
 
 internal_func void
+Win32DebugSyncDisplay(win32_offscreen_buffer* Buffer,
+  win32_sound_output* SoundInfo,
+  LPDIRECTSOUNDBUFFER SoundBuffer,
+  DWORD* LastCursorPositions,
+  int LastCursorPositionCount,
+  int LastCursorPositionIndex)
+{
+  int Width = Buffer->Width;
+  int SecondaryBufferSize = SoundInfo->SecondaryBufferSize;
+  int SoundBytesPerPixel = SecondaryBufferSize / Width;
+  int PlayCursorX = LastCursorPositions[LastCursorPositionIndex] / SoundBytesPerPixel;
+  int PlayCursorPaddingY = 30;
+
+
+  for (int Y = PlayCursorPaddingY;
+       Y < (Buffer->Height - PlayCursorPaddingY);
+       ++Y)
+  {
+    uint8_t* Rows = (uint8_t*) (Buffer->Data) + Y * Buffer->Pitch;
+    uint32_t* Pixel = (uint32_t*) (Rows + PlayCursorX * BytesPerPixel);
+
+    *Pixel = (uint32_t)(0xFFFFFFFF);
+  }
+}
+
+
+internal_func void
 RenderWeirdRectangle(win32_offscreen_buffer* Buffer, int XOffset, int YOffset)
 {
   uint8_t* Rows = (uint8_t*) Buffer->Data;
@@ -287,6 +315,7 @@ Win32ResizeDIBSection(win32_offscreen_buffer* Buffer, int Width, int Height)
   Buffer->Width = Width;
   Buffer->Height = Height;
   Buffer->Pitch = BytesPerPixel * Buffer->Width;
+  Buffer->BytesPerPixel = BytesPerPixel;
 
   Buffer->BitMapInfo.bmiHeader.biSize   = sizeof(Buffer->BitMapInfo.bmiHeader);
   Buffer->BitMapInfo.bmiHeader.biWidth  = Buffer->Width;
@@ -989,11 +1018,6 @@ int wWinMain(HINSTANCE hInstance,
       Win32FillSoundBuffer(SoundBuffer, &SoundOutput, ByteToLock, BytesToWrite, &GameSoundBuffer);
     }
 
-    Win32UpdateWindow(&ApplicationData.Buffer, DeviceContext, &ClientRect);
-
-    ReleaseDC(Window, DeviceContext);
-
-
 
     // Swap inputs, NewInputs become OldInputs, NewsInput can be clear or whatever
     *OldInputs = *NewInputs;
@@ -1015,6 +1039,14 @@ int wWinMain(HINSTANCE hInstance,
     {
       // TODO (hanasou): We missed a frame, should put a log here
     }
+
+#if HANDMADE_INTERNAL
+    Win32DebugSyncDisplay(&ApplicationData.Buffer, &SoundOutput, SoundBuffer, LastCursorPositions, LastCursorPositionCount, LastCursorPositionIndex);
+#endif
+    Win32UpdateWindow(&ApplicationData.Buffer, DeviceContext, &ClientRect);
+    ReleaseDC(Window, DeviceContext);
+
+
 
 #if HANDMADE_INTERNAL
     {
