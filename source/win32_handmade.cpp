@@ -245,6 +245,31 @@ Win32ReadKeyboardButtonState(game_button_state*, game_button_state* NewState, in
 
 
 internal_func void
+Win32DebugDrawSingleVerticalLine(win32_offscreen_buffer* Buffer,
+  int X, int Y,
+  int Height,
+  int PaddingX, int PaddingY,
+  uint32_t Color)
+{
+  int BufferWidth = Buffer->Width;
+  int BufferHeight = Buffer->Height;
+  Y = Y + PaddingY; // move Y to padding
+  X += PaddingX;
+
+  int MaxY = (Y + Height) >= (BufferHeight - PaddingY)
+    ? (BufferHeight - PaddingY)
+    : (Y + Height);
+  if (X >= BufferWidth - PaddingX) return; // X fall out of screen
+
+  for (int YY = Y; YY < MaxY; ++YY)
+  {
+    uint8_t* Row = (uint8_t*)(Buffer->Data) + YY * Buffer->Pitch;
+    uint32_t* Pixel = (uint32_t*) (Row + X * Buffer->BytesPerPixel);
+    *Pixel = Color;
+  }
+}
+
+internal_func void
 Win32DebugSyncDisplay(win32_offscreen_buffer* Buffer,
   win32_sound_output* SoundInfo,
   LPDIRECTSOUNDBUFFER SoundBuffer,
@@ -252,21 +277,20 @@ Win32DebugSyncDisplay(win32_offscreen_buffer* Buffer,
   int LastCursorPositionCount,
   int LastCursorPositionIndex)
 {
-  int Width = Buffer->Width;
   int SecondaryBufferSize = SoundInfo->SecondaryBufferSize;
-  int SoundBytesPerPixel = SecondaryBufferSize / Width;
-  int PlayCursorX = LastCursorPositions[LastCursorPositionIndex] / SoundBytesPerPixel;
-  int PlayCursorPaddingY = 30;
+  int SoundBytesPerPixel = SecondaryBufferSize / Buffer->Width;
 
-
-  for (int Y = PlayCursorPaddingY;
-       Y < (Buffer->Height - PlayCursorPaddingY);
-       ++Y)
+  for (int CursorIndex = 0; CursorIndex < LastCursorPositionCount; CursorIndex += 2)
   {
-    uint8_t* Rows = (uint8_t*) (Buffer->Data) + Y * Buffer->Pitch;
-    uint32_t* Pixel = (uint32_t*) (Rows + PlayCursorX * BytesPerPixel);
+    int PlayCursorX = LastCursorPositions[CursorIndex] / SoundBytesPerPixel;
+    int WriteCursorX = LastCursorPositions[CursorIndex + 1] / SoundBytesPerPixel;
+    int PaddingX = 20;
+    int PaddingY = 20;
+    int Y = 0;
+    int Height = Buffer->Height;
 
-    *Pixel = (uint32_t)(0xFFFFFFFF);
+    Win32DebugDrawSingleVerticalLine(Buffer, PlayCursorX, Y, Height, PaddingX, PaddingY, 0xFFFFFFFF);
+    Win32DebugDrawSingleVerticalLine(Buffer, WriteCursorX, Y, Height, PaddingX, PaddingY, 0xFF00FFFF);
   }
 }
 
@@ -816,7 +840,7 @@ int wWinMain(HINSTANCE hInstance,
 
 
 #if HANDMADE_INTERNAL
-  int const LastCursorPositionCount = 60; // 30 locations stored for 2 cursors
+  int const LastCursorPositionCount = 30; // 30 locations stored for 2 cursors
   DWORD LastCursorPositions[LastCursorPositionCount] = {};
   int LastCursorPositionIndex = 0;
 #endif
