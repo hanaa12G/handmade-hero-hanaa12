@@ -738,9 +738,9 @@ Win32GetTimeElapsedMs(LARGE_INTEGER const* From, LARGE_INTEGER const* To)
 
 
 
-int wWinMain(HINSTANCE hInstance,
+int WINAPI WinMain(HINSTANCE hInstance,
   HINSTANCE /* hPrevInstance */,
-  LPWSTR    /* lpCmdLine */,
+  LPSTR    /* lpCmdLine */,
   int       /*nShowCmd*/)
 {
   LoadXInputDll();
