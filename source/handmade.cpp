@@ -35,8 +35,6 @@ GameOutputSound(game_sound_output_buffer* SoundOutputBuffer, unsigned ToneHz)
   int16_t* Samples = SoundOutputBuffer->Samples;
   float    WavePeriod = (float) SoundOutputBuffer->SamplesPerSecond / (float) ToneHz;
 
-
-
   float AngleStep = (2 * PI / (float) WavePeriod);
 
   for (unsigned SampleIndex = 0;

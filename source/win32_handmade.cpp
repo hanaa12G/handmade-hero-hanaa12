@@ -11,6 +11,9 @@
 #include "handmade.cpp" 
 #define PI 3.14159265359f
 
+
+#include "win32_handmade.h"
+
 #ifndef HANDMDE_GLOBAL_DEFINE
 #define HANDMDE_GLOBAL_DEFINE
 
@@ -79,38 +82,6 @@ global_variable bool       Win32AppIsRunning;
 global_variable int        BytesPerPixel = 4;
 global_variable bool       ShouldDisplayDebugInfo = false;
 global_variable LARGE_INTEGER ProcessorFrequency;
-
-struct win32_offscreen_buffer
-{
-  BITMAPINFO BitMapInfo;
-  void*      Data;
-  int        Width;
-  int        Height;
-  int        Pitch;
-  int        BytesPerPixel;
-};
-
-struct win32_window_size
-{
-  int Width;
-  int Height;
-};
-
-struct win32_sound_output
-{
-  unsigned ToneHz;
-  unsigned SamplesPerSecond;
-  unsigned BytesPerSample;
-  int16_t  Volume;
-  unsigned SecondaryBufferSize;
-  unsigned SampleRunningIndex;
-  unsigned WavePeriod;
-
-  float    Angle;
-
-
-  float t;
-};
 
 struct win32_application_data
 {
@@ -244,61 +215,72 @@ Win32ReadKeyboardButtonState(game_button_state*, game_button_state* NewState, in
 }
 
 
+/**
+Debug fucntion, draws a vertical line on the screen
+
+@param BackBuffer - Screen back buffer, contains draw data
+@param X - Horinalal position of the line
+@param Top - Vertical Position of the line
+@param Bottom - Vertical Position of the line
+*/
 internal_func void
-Win32DebugDrawSingleVerticalLine(win32_offscreen_buffer* Buffer,
-  int X, int Y,
-  int Height,
-  int PaddingX, int PaddingY,
-  uint32_t Color)
+Win32DebugDrawVerticalLine(
+    win32_offscreen_buffer* BackBuffer,
+    int X,
+    int Top, int Bottom
+)
 {
-  int BufferWidth = Buffer->Width;
-  int BufferHeight = Buffer->Height;
-  Y = Y + PaddingY; // move Y to padding
-  X += PaddingX;
-
-  int MaxY = (Y + Height) >= (BufferHeight - PaddingY)
-    ? (BufferHeight - PaddingY)
-    : (Y + Height);
-  if (X >= BufferWidth - PaddingX) return; // X fall out of screen
-
-  for (int YY = Y; YY < MaxY; ++YY)
-  {
-    uint8_t* Row = (uint8_t*)(Buffer->Data) + YY * Buffer->Pitch;
-    uint32_t* Pixel = (uint32_t*) (Row + X * Buffer->BytesPerPixel);
-    *Pixel = Color;
-  }
+    int8_t* Pixels = (int8_t*) BackBuffer->Memory + 
+        (Top * BackBuffer->Pitch + X * BackBuffer->BytesPerPixel);
+    for (int y = Top; y < Bottom; ++y) {
+        int32_t* Pixel = (int32_t*) Pixels;
+        *Pixel = 0xff0000; // Draw a red line
+        Pixels += BackBuffer->Pitch;
+    }
 }
 
+/**
+Debug function to visualize current position of play cursor within the sound
+buffer 
+
+@param BackBuffer - Screen back buffer, where the draw effects
+@param SoundInfo - Information of current sound buffer
+@param LastPlayCursorCount - Number of play cursors we stored
+@param LastPlayCursor - Array of play cursor we stored
+#param TargetSecondsPerFrame - Invert of FPS
+*/
 internal_func void
-Win32DebugSyncDisplay(win32_offscreen_buffer* Buffer,
-  win32_sound_output* SoundInfo,
-  LPDIRECTSOUNDBUFFER SoundBuffer,
-  DWORD* LastCursorPositions,
-  int LastCursorPositionCount,
-  int LastCursorPositionIndex)
+Win32DebugSyncDisplay(
+    win32_offscreen_buffer* BackBuffer,
+    win32_sound_output* SoundInfo,
+    int LastPlayCursorCount,
+    DWORD* LastPlayCursor,
+    float TargetSecondsPerFrame)
 {
-  int SecondaryBufferSize = SoundInfo->SecondaryBufferSize;
-  int SoundBytesPerPixel = SecondaryBufferSize / Buffer->Width;
+    int PadX = 16;
+    int PadY = 16;
+    int Top = PadY;
+    int Bottom = BackBuffer->Height - PadY;
 
-  for (int CursorIndex = 0; CursorIndex < LastCursorPositionCount; CursorIndex += 2)
-  {
-    int PlayCursorX = LastCursorPositions[CursorIndex] / SoundBytesPerPixel;
-    int WriteCursorX = LastCursorPositions[CursorIndex + 1] / SoundBytesPerPixel;
-    int PaddingX = 20;
-    int PaddingY = 20;
-    int Y = 0;
-    int Height = Buffer->Height;
+    float C = (float) BackBuffer->Width /  (float) SoundInfo->SecondaryBufferSize;
 
-    Win32DebugDrawSingleVerticalLine(Buffer, PlayCursorX, Y, Height, PaddingX, PaddingY, 0xFFFFFFFF);
-    Win32DebugDrawSingleVerticalLine(Buffer, WriteCursorX, Y, Height, PaddingX, PaddingY, 0xFF00FFFF);
-  }
+    for (int PlayCursorIndex = 0;
+         PlayCursorIndex < LastPlayCursorCount;
+         ++PlayCursorIndex)
+    {
+        DWORD PlayCursor = LastPlayCursor[PlayCursorIndex];
+        float CursorX = C * PlayCursor;
+        int X = (int) (PadX + CursorX);
+        
+        Win32DebugDrawVerticalLine(BackBuffer, X, Top, Bottom);
+    }
 }
 
 
 internal_func void
 RenderWeirdRectangle(win32_offscreen_buffer* Buffer, int XOffset, int YOffset)
 {
-  uint8_t* Rows = (uint8_t*) Buffer->Data;
+  uint8_t* Rows = (uint8_t*) Buffer->Memory;
   for (int Y = 0;
        Y < Buffer->Height;
        ++Y)
@@ -329,10 +311,10 @@ internal_func void
 Win32ResizeDIBSection(win32_offscreen_buffer* Buffer, int Width, int Height)
 {
   assert(Width >= 0 && Height >= 0 && Buffer);
-  if (Buffer->Data)
+  if (Buffer->Memory)
   {
-    VirtualFree(Buffer->Data, 0, MEM_RELEASE);
-    Buffer->Data = NULL;
+    VirtualFree(Buffer->Memory, 0, MEM_RELEASE);
+    Buffer->Memory = NULL;
   }
 
   int16_t BitsPerPixel = 32;
@@ -350,7 +332,7 @@ Win32ResizeDIBSection(win32_offscreen_buffer* Buffer, int Width, int Height)
 
 
   int TotalBytes = BytesPerPixel * Buffer->Width * Buffer->Height;
-  Buffer->Data = (uint8_t*) VirtualAlloc(0, TotalBytes, MEM_COMMIT, PAGE_READWRITE);
+  Buffer->Memory = (uint8_t*) VirtualAlloc(0, TotalBytes, MEM_COMMIT, PAGE_READWRITE);
 
   RenderWeirdRectangle(Buffer, 0, 0);
 }
@@ -367,7 +349,7 @@ Win32UpdateWindow(win32_offscreen_buffer* Buffer,
    */
                 0, 0, ClientRect->right - ClientRect->left, ClientRect->bottom - ClientRect->top,
                 0, 0, Buffer->Width, Buffer->Height,
-                Buffer->Data,
+                Buffer->Memory,
                 &Buffer->BitMapInfo,
                 DIB_RGB_COLORS, SRCCOPY);
 }
@@ -644,19 +626,10 @@ Win32ProcessPendingMessages(game_input_controller* NewController, game_input_con
             {
               case VK_UP:
                 {
-                  if (SoundOutput)
-                  {
-                    SoundOutput->WavePeriod = SoundOutput->SamplesPerSecond / SoundOutput->ToneHz;
-                  }
-
                   Win32ReadKeyboardButtonState(&OldController->ActionUp, &NewController->ActionUp, IsKeyDown); 
                 } break;
               case VK_DOWN:
                 {
-                  if (SoundOutput)
-                  {
-                    SoundOutput->WavePeriod = SoundOutput->SamplesPerSecond / SoundOutput->ToneHz;
-                  }
                   Win32ReadKeyboardButtonState(&OldController->ActionDown, &NewController->ActionDown, IsKeyDown); 
                 } break;
               case VK_LEFT:
@@ -788,15 +761,13 @@ int WINAPI WinMain(HINSTANCE hInstance,
     return 1;
   }
 
+  int ToneHz = 260;
+
   win32_sound_output SoundOutput;
-  SoundOutput.ToneHz = 261;
   SoundOutput.SamplesPerSecond = 48000;
   SoundOutput.BytesPerSample = sizeof (int16_t) * 2;
-  SoundOutput.Volume = 4000;
   SoundOutput.SecondaryBufferSize = SoundOutput.SamplesPerSecond * SoundOutput.BytesPerSample;
-  SoundOutput.SampleRunningIndex = 0;
-  SoundOutput.WavePeriod = SoundOutput.SamplesPerSecond / SoundOutput.ToneHz; // (samples/s) / (cycles/s) = samples/cycle
-  SoundOutput.Angle = 0.0f;
+  SoundOutput.RunningSampleIndex = 0;
   bool IsSoundPlaying = false;
 
   ApplicationData.SecondarySoundBuffer = Win32InitDSound(Window, SoundOutput.SamplesPerSecond, SoundOutput.SecondaryBufferSize);
@@ -977,7 +948,7 @@ int WINAPI WinMain(HINSTANCE hInstance,
     GetClientRect(Window, &ClientRect);
 
     game_offscreen_buffer GameDrawingBuffer;
-    GameDrawingBuffer.Data = ApplicationData.Buffer.Data;
+    GameDrawingBuffer.Data = ApplicationData.Buffer.Memory;
     GameDrawingBuffer.Width = ApplicationData.Buffer.Width;
     GameDrawingBuffer.Height = ApplicationData.Buffer.Height;
     GameDrawingBuffer.Pitch  = ApplicationData.Buffer.Pitch;
@@ -1065,7 +1036,7 @@ int WINAPI WinMain(HINSTANCE hInstance,
     }
 
 #if HANDMADE_INTERNAL
-    Win32DebugSyncDisplay(&ApplicationData.Buffer, &SoundOutput, SoundBuffer, LastCursorPositions, LastCursorPositionCount, LastCursorPositionIndex);
+    Win32DebugSyncDisplay(&ApplicationData.Buffer, &SoundOutput, LastCursorPositionCount, LastCursorPositions, 0);
 #endif
     Win32UpdateWindow(&ApplicationData.Buffer, DeviceContext, &ClientRect);
     ReleaseDC(Window, DeviceContext);
