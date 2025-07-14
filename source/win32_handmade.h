@@ -15,12 +15,25 @@ struct win32_window_dimension {
 };
 
 struct win32_sound_output {
+    /// Number of samples per second
     int       SamplesPerSecond;
+    /// The current sample we're outputing/playing
     uint32_t  RunningSampleIndex;
+    /// Bytes per sample
     int       BytesPerSample;
+    /// Size of audio buffer
     int       SecondaryBufferSize;
     float     tSine;
+    /// Number of samples we want to write each frame
+    ///
+    /// It's called latency because we don't want to write only 1 frame worth
+    /// of sample, instead we add some redundant to avoid slow frame
     int       LatencySampleCount;
+};
+
+struct win32_debug_time_marker {
+    DWORD PlayCursor;
+    DWORD WriteCursor;
 };
 
 

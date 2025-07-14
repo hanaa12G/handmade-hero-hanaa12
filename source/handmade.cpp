@@ -125,23 +125,29 @@ void GameUpdateAndRender(game_offscreen_buffer* Buffer,
     {
       if (Controller->MoveLeft.EndedDown)
       {
-        GameState->XOffset += 1;
+        GameState->XOffset += 10;
       }
       if (Controller->MoveRight.EndedDown)
       {
-        GameState->XOffset -= 1;
+        GameState->XOffset -= 10;
       }
       if (Controller->MoveUp.EndedDown)
       {
-        GameState->YOffset += 1;
-        GameState->ToneHz = 256 + 128;
+        GameState->YOffset += 10;
+        GameState->ToneHz += 1;
       }
       if (Controller->MoveDown.EndedDown)
       {
-        GameState->YOffset -= 1;
-        GameState->ToneHz = 256 - 128;
+        GameState->YOffset -= 10;
+        GameState->ToneHz -= 1;
       }
     }
+  }
+
+  if (GameState->ToneHz < 65) {
+    GameState->ToneHz = 65;
+  } else if (GameState->ToneHz >= 523) {
+    GameState->ToneHz = 523;
   }
 
   GameOutputSound(SoundBuffer, GameState->ToneHz);
