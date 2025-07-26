@@ -84,10 +84,9 @@ RenderWeirdRectangle(game_offscreen_buffer* Buffer, int XOffset, int YOffset)
   }
 }
 
-void GameUpdateAndRender(game_offscreen_buffer* Buffer,
-  game_sound_output_buffer* SoundBuffer,
-  game_inputs* Inputs,
-  game_memory* Memory)
+void GameUpdateAndRender(game_memory* Memory,
+  game_offscreen_buffer* Buffer,
+  game_inputs* Inputs)
 {
   HANDMADE_ASSERT(Memory->PermanentStorageSize >= sizeof(game_state));
 
@@ -134,12 +133,12 @@ void GameUpdateAndRender(game_offscreen_buffer* Buffer,
       if (Controller->MoveUp.EndedDown)
       {
         GameState->YOffset += 10;
-        GameState->ToneHz += 1;
+        GameState->ToneHz += 5;
       }
       if (Controller->MoveDown.EndedDown)
       {
         GameState->YOffset -= 10;
-        GameState->ToneHz -= 1;
+        GameState->ToneHz -= 5;
       }
     }
   }
@@ -150,7 +149,12 @@ void GameUpdateAndRender(game_offscreen_buffer* Buffer,
     GameState->ToneHz = 523;
   }
 
-  GameOutputSound(SoundBuffer, GameState->ToneHz);
   RenderWeirdRectangle(Buffer, GameState->XOffset, GameState->YOffset);
 }
 
+void GameGetSoundSample(game_memory* Memory,
+        game_sound_output_buffer* SoundBuffer)
+{
+      game_state* GameState = (game_state*) (Memory->PermanentStorage);
+      GameOutputSound(SoundBuffer, GameState->ToneHz);
+}

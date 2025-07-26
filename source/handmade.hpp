@@ -114,9 +114,13 @@ internal_func void PlatformFreeFileMemory(debug_file_result* File);
 #endif
 
 
-void GameUpdateAndRender(game_offscreen_buffer* Buffer,
-                         game_sound_output_buffer* SoundBuffer,
-                         game_inputs* Inputs,
-                         game_memory* Memory);
+internal_func
+void GameUpdateAndRender(game_memory* Memory,
+        game_offscreen_buffer* BackBuffer,
+        game_inputs* Inputs);
+
+internal_func
+void GameGetSoundSample(game_memory* Memory,
+        game_sound_output_buffer* SoundBuffer);
 
 #endif

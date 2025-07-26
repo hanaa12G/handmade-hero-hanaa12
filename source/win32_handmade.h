@@ -19,10 +19,11 @@ struct win32_sound_output {
     int       SamplesPerSecond;
     /// The current sample we're outputing/playing
     uint32_t  RunningSampleIndex;
+    uint32_t  RunningSampleByte;
     /// Bytes per sample
     int       BytesPerSample;
     /// Size of audio buffer
-    int       SecondaryBufferSize;
+    uint32_t  SecondaryBufferSize;
     float     tSine;
     /// Number of samples we want to write each frame
     ///
@@ -32,8 +33,16 @@ struct win32_sound_output {
 };
 
 struct win32_debug_time_marker {
-    DWORD PlayCursor;
-    DWORD WriteCursor;
+    /// Cursor positions when we beginning to calculate and output sound
+    DWORD OutputPlayCursor;
+    DWORD OutputWriteCursor;
+
+    DWORD OutputLocation;
+    DWORD OutputByteCount;
+
+    /// Cursor position when we flip 
+    DWORD FlipPlayCursor;
+    DWORD FlipWriteCursor;
 };
 
 
