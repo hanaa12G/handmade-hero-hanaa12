@@ -1,4 +1,5 @@
 #include "handmade.hpp"
+#include <cmath>
 #include <cstdint>
 
 #define PI 3.14159265359f
@@ -46,6 +47,7 @@ GameOutputSound(game_sound_output_buffer* SoundOutputBuffer, unsigned ToneHz)
     int16_t SampleValue = (int16_t) (sinf(t) * Volume);
 
     *Samples++ = SampleValue;
+    *Samples++ = SampleValue;
 
     Angle += AngleStep;
     if (Angle > 2 * PI) {
@@ -75,7 +77,7 @@ RenderWeirdRectangle(game_offscreen_buffer* Buffer, int XOffset, int YOffset)
       uint8_t Green = (uint8_t) (XOffset + X);
       uint8_t Blue  = (uint8_t) (YOffset + Y);
 
-      *Pixel++ = (uint32_t)((Green << 8) | Blue);
+      *Pixel++ = (uint32_t)((255 << 24) | (Green << 8) | Blue);
 
     }
 
@@ -91,21 +93,21 @@ void GameUpdateAndRender(game_memory* Memory,
   HANDMADE_ASSERT(Memory->PermanentStorageSize >= sizeof(game_state));
 
   game_state* GameState = (game_state*) (Memory->PermanentStorage);
-  if (!GameState->IsInitialized)
-  {
-    GameState->IsInitialized = true;
-    GameState->XOffset = 0;
-    GameState->YOffset = 0;
-    GameState->ToneHz = 260;
+  /* if (!GameState->IsInitialized) */
+  /* { */
+  /*   GameState->IsInitialized = true; */
+  /*   GameState->XOffset = 0; */
+  /*   GameState->YOffset = 0; */
+  /*   GameState->ToneHz = 260; */
 
-    debug_file_result Result;
-    if (PlatformReadEntireFile(__FILE__, &Result))
-    {
-      char const* TempOutFile = "W:\\handmade-hero\\temp.out";
-      PlatformWriteEntireFile(TempOutFile, Result.Memory, Result.Size);
-      PlatformFreeFileMemory(&Result);
-    }
-  }
+  /*   debug_file_result Result; */
+  /*   if (PlatformReadEntireFile(__FILE__, &Result)) */
+  /*   { */
+  /*     char const* TempOutFile = "W:\\handmade-hero\\temp.out"; */
+  /*     PlatformWriteEntireFile(TempOutFile, Result.Memory, Result.Size); */
+  /*     PlatformFreeFileMemory(&Result); */
+  /*   } */
+  /* } */
 
 
   for (unsigned ControllerIndex = 0;
