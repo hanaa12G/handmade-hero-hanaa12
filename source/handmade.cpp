@@ -27,10 +27,11 @@ SafeTruncateNumber(uint64_t Input)
 
 
 internal_func void
-GameOutputSound(game_sound_output_buffer* SoundOutputBuffer, unsigned ToneHz)
+GameOutputSound(game_sound_output_buffer* SoundOutputBuffer, game_state* GameState)
 {
-  local_persist float Angle = 0.0f;
-  local_persist unsigned Volume = 4000;
+  unsigned ToneHz = GameState->ToneHz;
+  float* Angle = &GameState->Angle;
+  unsigned Volume = GameState->Volume;
 
   unsigned SampleCountToOutput = SoundOutputBuffer->SampleCountToOutput;
   int16_t* Samples = SoundOutputBuffer->Samples;
@@ -42,16 +43,16 @@ GameOutputSound(game_sound_output_buffer* SoundOutputBuffer, unsigned ToneHz)
       SampleIndex < SampleCountToOutput;
       ++SampleIndex)
   {
-    float t = Angle; 
+    float t = *Angle; 
 
     int16_t SampleValue = (int16_t) (sinf(t) * Volume);
 
     *Samples++ = SampleValue;
     *Samples++ = SampleValue;
 
-    Angle += AngleStep;
-    if (Angle > 2 * PI) {
-      Angle -= 2 * PI;
+    *Angle += AngleStep;
+    if (*Angle > 2 * PI) {
+      *Angle -= 2 * PI;
     }
   }
 }
@@ -77,7 +78,7 @@ RenderWeirdRectangle(game_offscreen_buffer* Buffer, int XOffset, int YOffset)
       uint8_t Green = (uint8_t) (XOffset + X);
       uint8_t Blue  = (uint8_t) (YOffset + Y);
 
-      *Pixel++ = (uint32_t)((255 << 24) | (Green << 8) | Blue);
+      *Pixel++ = (uint32_t)((255 << 24) | (Green << 8) | (Blue << 16));
 
     }
 
@@ -86,28 +87,28 @@ RenderWeirdRectangle(game_offscreen_buffer* Buffer, int XOffset, int YOffset)
   }
 }
 
-void GameUpdateAndRender(game_memory* Memory,
-  game_offscreen_buffer* Buffer,
-  game_inputs* Inputs)
+extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
   HANDMADE_ASSERT(Memory->PermanentStorageSize >= sizeof(game_state));
 
   game_state* GameState = (game_state*) (Memory->PermanentStorage);
-  /* if (!GameState->IsInitialized) */
-  /* { */
-  /*   GameState->IsInitialized = true; */
-  /*   GameState->XOffset = 0; */
-  /*   GameState->YOffset = 0; */
-  /*   GameState->ToneHz = 260; */
+  if (!GameState->IsInitialized)
+  {
+    GameState->IsInitialized = true;
+    GameState->XOffset = 0;
+    GameState->YOffset = 0;
+    GameState->ToneHz = 260;
+    GameState->Angle = 0.0f;
+    GameState->Volume = 4000;
 
-  /*   debug_file_result Result; */
-  /*   if (PlatformReadEntireFile(__FILE__, &Result)) */
-  /*   { */
-  /*     char const* TempOutFile = "W:\\handmade-hero\\temp.out"; */
-  /*     PlatformWriteEntireFile(TempOutFile, Result.Memory, Result.Size); */
-  /*     PlatformFreeFileMemory(&Result); */
-  /*   } */
-  /* } */
+    debug_file_result Result;
+    if (Memory->DEBUGPlatformReadEntireFile(__FILE__, &Result))
+    {
+      char const* TempOutFile = "W:\\handmade-hero\\temp.out";
+      Memory->DEBUGPlatformWriteEntireFile(TempOutFile, Result.Memory, Result.Size);
+      Memory->DEBUGPlatformFreeFileMemory(&Result);
+    }
+  }
 
 
   for (unsigned ControllerIndex = 0;
@@ -154,9 +155,8 @@ void GameUpdateAndRender(game_memory* Memory,
   RenderWeirdRectangle(Buffer, GameState->XOffset, GameState->YOffset);
 }
 
-void GameGetSoundSample(game_memory* Memory,
-        game_sound_output_buffer* SoundBuffer)
+extern "C" GAME_GET_SOUND_SAMPLE(GameGetSoundSample)
 {
       game_state* GameState = (game_state*) (Memory->PermanentStorage);
-      GameOutputSound(SoundBuffer, GameState->ToneHz);
+      GameOutputSound(SoundBuffer, GameState);
 }

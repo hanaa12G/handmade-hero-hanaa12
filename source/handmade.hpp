@@ -10,6 +10,9 @@
 
 #endif 
 
+#include <cstdint>
+#include <cstddef>
+
 
 
 struct game_offscreen_buffer 
@@ -81,21 +84,14 @@ struct game_inputs
 
 
 
-struct game_memory
-{
-  void* PermanentStorage;
-  uint64_t PermanentStorageSize;
-
-  void* TransientStorage;
-  uint64_t TransientStorageSize;
-};
-
 struct game_state
 {
   bool IsInitialized;
   int XOffset = 0;
   int YOffset = 0;
   unsigned ToneHz = 260;
+  float Angle = 0.0f;
+  unsigned Volume = 4000;
 };
 
 
@@ -107,20 +103,57 @@ struct debug_file_result
   uint64_t Size;
 };
 
-internal_func bool PlatformReadEntireFile(char const* FileName, debug_file_result* Result);
-internal_func bool PlatformWriteEntireFile(char const* FileName, void const* Buffer, uint64_t Size); 
-internal_func void PlatformFreeFileMemory(debug_file_result* File);
+#define DEBUG_PLATFORM_READ_ENTIRE_FILE(name) bool name(char const* FileName, debug_file_result* Result)
+typedef DEBUG_PLATFORM_READ_ENTIRE_FILE(debug_platform_read_entire_file);
+
+
+#define DEBUG_PLATFORM_WRITE_ENTINE_FILE(name) bool name(char const* FileName, void const* Buffer, uint64_t Size) 
+typedef DEBUG_PLATFORM_WRITE_ENTINE_FILE(debug_platform_write_entire_file);
+
+#define DEBUG_PLATFORM_FREE_FILE_MEMORY(name) void name(debug_file_result* File);
+typedef DEBUG_PLATFORM_FREE_FILE_MEMORY(debug_platform_free_file_memory);
 
 #endif
 
+struct game_memory
+{
+  void* PermanentStorage = NULL;
+  uint64_t PermanentStorageSize = 0;
 
-internal_func
-void GameUpdateAndRender(game_memory* Memory,
-        game_offscreen_buffer* BackBuffer,
-        game_inputs* Inputs);
+  void* TransientStorage = NULL;
+  uint64_t TransientStorageSize = 0;
 
-internal_func
-void GameGetSoundSample(game_memory* Memory,
-        game_sound_output_buffer* SoundBuffer);
+#ifdef HANDMADE_INTERNAL
+  debug_platform_read_entire_file* DEBUGPlatformReadEntireFile = NULL;
+  debug_platform_write_entire_file* DEBUGPlatformWriteEntireFile = NULL;
+  debug_platform_free_file_memory* DEBUGPlatformFreeFileMemory = NULL;
+#endif
+};
+
+
+#define GAME_UPDATE_AND_RENDER(name) void name(game_memory* Memory, \
+                                               game_offscreen_buffer* Buffer, \
+                                               game_inputs* Inputs)
+
+typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
+
+GAME_UPDATE_AND_RENDER(GameUpdateAndRenderStub)
+{
+    (void) Memory;
+    (void) Buffer;
+    (void) Inputs;
+}
+
+
+#define GAME_GET_SOUND_SAMPLE(name) void name(game_memory* Memory, \
+                                              game_sound_output_buffer* SoundBuffer)
+
+typedef GAME_GET_SOUND_SAMPLE(game_get_sound_sample);
+
+GAME_GET_SOUND_SAMPLE(GameGetSoundSampleStub)
+{
+    (void) Memory;
+    (void) SoundBuffer;
+}
 
 #endif

@@ -3,7 +3,7 @@
 #include <SDL3/SDL_main.h>
 
 #include "sdl_handmade.h"
-#include "handmade.cpp"
+#include "handmade.hpp"
 #include "circular_buffer.cpp"
 
 #include <cassert>
@@ -30,73 +30,9 @@
 global_variable SDL_Window* Window;
 global_variable SDL_Renderer* Renderer;
 global_variable uint64_t PerformanceCounterFreq;
-global_variable int const ExpectedFPS = 40;
+global_variable int const ExpectedFPS = 60;
 global_variable double ExpectedFrameTime = 1.0 / ExpectedFPS;
 
-internal_func
-void SDLAppHandleAudioGetCallback(void* UserData, SDL_AudioStream* Stream,
-    int AdditionalAmount, int TotalAmount)
-{
-    sdl_sound_output* SoundOutput = (sdl_sound_output*) UserData;
-
-    SoundOutput->RunningSampleIndex += AdditionalAmount / 4;
-
-    /* int RequestedSamples = AdditionalAmount / (sizeof(int16_t) * 2); */
-
-    /* circular_buffer* SoundBuffer = &SoundOutput->Buffer; */
-
-    /* // TODO (hanasou): Can we make this smaller (192KB currently) */
-    /* char OutBuffer[AUDIO_SAMPLES_PER_SECOND * sizeof(int16_t) * 2] = {}; */
-
-    /* int BytesCanRead = CircularBufferReadableSize(SoundBuffer); */
-    /* // TODO (hanasou): Bit manipulation way */
-    /* while (BytesCanRead > 0 && BytesCanRead % 4 != 0) { */
-    /*     BytesCanRead -= 1; */
-    /* } */
-    /* int ReadBytes = std::min(AdditionalAmount, BytesCanRead); */
-    /* SDL_Log("Read Byte %d", ReadBytes); */
-    /* ReadBytes += 400; */
-    /* SoundOutput->RunningSampleIndex += ReadBytes / 4; */
-
-    /* SDL_Log("Get Callback: additional=%d total=%d, can_read=%d, out: %d", AdditionalAmount / 4, TotalAmount / 4, BytesCanRead/ 4, ReadBytes / 4); */
-
-    /* CircularBufferRead(SoundBuffer, OutBuffer, ReadBytes); */
-
-    /* SDL_PutAudioStreamData(Stream, OutBuffer, ReadBytes); */
-    /* SDL_FlushAudioStream(Stream); */
-}
-
-internal_func
-void SDLAppHandleAudioPutCallback(void* UserData, SDL_AudioStream* Stream,
-    int AdditionalAmount, int TotalAmount)
-{
-    // SDL_Log("Put Callback: additional=%d total=%d", AdditionalAmount, TotalAmount);
-}
-
-internal_func
-void SDLAppHandleAudioCallback(void* UserData, SDL_AudioStream* Stream,
-    int AdditionalAmount, int TotalAmount)
-{
-    sdl_application_state* ApplicationState = (sdl_application_state*) UserData;
-
-    AdditionalAmount /= 2 * sizeof(int16_t);
-    TotalAmount /= 2 * sizeof(int16_t);
-
-
-    ApplicationState->AudioAdditional += AdditionalAmount;
-    ApplicationState->AudioTotal += TotalAmount;
-
-    int QueuedBytes = SDL_GetAudioStreamQueued(Stream);
-    assert(QueuedBytes % (sizeof(int16_t) * 2) == 0);
-
-    int QueuedSamples = QueuedBytes / (sizeof(int16_t) * 2);
-
-    int AvailableBytes = SDL_GetAudioStreamAvailable(Stream);
-    assert(AvailableBytes % (sizeof(int16_t) * 2) == 0);
-
-    int AvailableSamples = AvailableBytes / (sizeof(int16_t) * 2);
-    SDL_Log("SDLAppHandleAudioCallback: %d - %d, queued_samples: %d, avai_samples: %d", AdditionalAmount, TotalAmount, QueuedSamples, AvailableSamples);
-}
 
 internal_func
 float SDLAppGetSecondsElapsed(uint64_t From, uint64_t To) {
@@ -223,6 +159,105 @@ void SDLAppUpdateWindow(sdl_offscreen_buffer* Buffer,
     SDL_UpdateWindowSurface(Window);
 }
 
+
+internal_func
+sdl_game_code SDLAppLoadGameCode()
+{
+    sdl_game_code Result = {};
+
+    SDL_SharedObject* GameCode = SDL_LoadObject("./libhandmade.so");
+    if (!GameCode) {
+        SDL_Log("Cannot load game code libhandmade.so: %s", SDL_GetError());
+        return Result;
+    }
+
+    Result.Object = GameCode;
+
+    SDL_FunctionPointer GameUpdateAndRenderFunc = SDL_LoadFunction(GameCode, "GameUpdateAndRender");
+    SDL_FunctionPointer GameGetSoundSampleFunc = SDL_LoadFunction(GameCode, "GameGetSoundSample");
+
+    if (GameUpdateAndRenderFunc) {
+        Result.GameUpdateAndRender = (game_update_and_render*) GameUpdateAndRenderFunc;
+    }
+    if (GameGetSoundSampleFunc) {
+        Result.GameGetSoundSample = (game_get_sound_sample*) GameGetSoundSampleFunc;
+    }
+
+    Result.IsValid = GameUpdateAndRenderFunc && GameGetSoundSampleFunc;
+
+    return Result;
+}
+
+internal_func
+void SDLAppUnloadGameCode(sdl_game_code* GameCode)
+{
+    SDL_UnloadObject(GameCode->Object);
+    GameCode->IsValid = false;
+    GameCode->GameUpdateAndRender = &GameUpdateAndRenderStub;
+    GameCode->GameGetSoundSample = &GameGetSoundSampleStub;
+}
+
+DEBUG_PLATFORM_READ_ENTIRE_FILE(DEBUGPlatformReadEntireFile)
+{
+    SDL_Storage* User = SDL_OpenUserStorage("hanasou", "handmade-hero-hanaa12", 0);
+    if (User == NULL) {
+        return false;
+    }
+    while (!SDL_StorageReady(User)) {
+        SDL_Delay(1);
+    }
+
+    uint64_t FileSize = 0;
+
+    if (!SDL_GetStorageFileSize(User, FileName, &FileSize)) {
+        SDL_CloseStorage(User);
+        SDL_Log("Cannot get file size %s", SDL_GetError());
+        return false;
+    }
+
+    void* Buffer = SDL_malloc(FileSize);
+    bool ReadOK = false;
+    if (Buffer) {
+        if (SDL_ReadStorageFile(User, FileName, Buffer, FileSize)) {
+            Result->Size = FileSize;   
+            Result->Memory = Buffer;
+            ReadOK = true;
+        } else {
+            SDL_free(Buffer);
+        }
+    }
+
+    SDL_CloseStorage(User);
+
+    return ReadOK;
+}
+
+DEBUG_PLATFORM_WRITE_ENTINE_FILE(DEBUGPlatformWriteEntireFile)
+{
+    SDL_Storage* User = SDL_OpenUserStorage("hanasou", "handmade-hero-hanaa12", 0);
+    if (User == NULL) {
+        return false;
+    }
+    while (!SDL_StorageReady(User)) {
+        SDL_Delay(1);
+    }
+
+    bool WriteOK = true;
+    if (!SDL_WriteStorageFile(User, FileName, Buffer, Size)) {
+        SDL_Log("Cannot write file %s", SDL_GetError());
+        WriteOK = false;
+    }
+
+    SDL_CloseStorage(User);
+    return WriteOK;
+}
+
+internal_func void 
+DEBUGPlatformFreeFileMemory(debug_file_result* File)
+{
+  SDL_free(File->Memory);
+}
+
 SDL_AppResult SDL_AppInit(void** AppState, int argc, char* argv[])
 {
     sdl_application_state* ApplicationState =  new sdl_application_state();
@@ -253,6 +288,12 @@ SDL_AppResult SDL_AppInit(void** AppState, int argc, char* argv[])
     GameMemory->PermanentStorage = GameMemoryBuffer;
     GameMemory->TransientStorage = (char*) GameMemoryBuffer
         + GameMemory->PermanentStorageSize;
+
+#ifdef HANDMADE_INTERNAL
+    GameMemory->DEBUGPlatformReadEntireFile = &DEBUGPlatformReadEntireFile;
+    GameMemory->DEBUGPlatformWriteEntireFile = &DEBUGPlatformWriteEntireFile;
+    GameMemory->DEBUGPlatformFreeFileMemory = &DEBUGPlatformFreeFileMemory;
+#endif
     
     
     if (!SDL_Init(SDL_INIT_AUDIO)) {
@@ -274,17 +315,9 @@ SDL_AppResult SDL_AppInit(void** AppState, int argc, char* argv[])
 
         ApplicationState->AudioStream = AudioStream;
         SDL_ResumeAudioStreamDevice(ApplicationState->AudioStream);
-
-        /* int const AudioBufferSize = 2 * sizeof(int16_t) * AUDIO_SAMPLES_PER_SECOND; */
-        /* void* AudioBuffer = SDL_malloc(AudioBufferSize); */
-
-        /* ApplicationState->SoundOutput.Memory = AudioBuffer; */
-        /* CircularBufferInit(&ApplicationState->SoundOutput.Buffer, */
-        /*     ApplicationState->SoundOutput.Memory, */
-        /*     AudioBufferSize); */
-
     }
 
+    ApplicationState->GameCode = SDLAppLoadGameCode();
 
 
     return SDL_APP_CONTINUE;
@@ -351,6 +384,14 @@ SDL_AppResult SDL_AppIterate(void* AppState)
         return SDL_APP_SUCCESS;
     }
 
+    local_persist int LoadCounter = 0;
+    if (LoadCounter > 120) {
+        SDLAppUnloadGameCode(&ApplicationState->GameCode);
+        ApplicationState->GameCode = SDLAppLoadGameCode();
+        LoadCounter = 0;
+    }
+    LoadCounter += 1;
+
     game_inputs* NewInputs = &ApplicationState->NewInputs;
     game_inputs* OldInputs = &ApplicationState->OldInputs;
 
@@ -381,12 +422,10 @@ SDL_AppResult SDL_AppIterate(void* AppState)
         GameDrawingBuffer.Height = ApplicationState->Buffer.Surface->h;
         GameDrawingBuffer.Pitch  = ApplicationState->Buffer.Surface->pitch;
 
-        GameUpdateAndRender(&ApplicationState->GameMemory, &GameDrawingBuffer,
+        ApplicationState->GameCode.GameUpdateAndRender(&ApplicationState->GameMemory, &GameDrawingBuffer,
                 NewInputs);
 
         SDL_LockAudioStream(ApplicationState->AudioStream);
-
-        sdl_sound_output* SoundOutput = &ApplicationState->SoundOutput;
 
         double SamplesPerFrame = (double) AUDIO_SAMPLES_PER_SECOND * ExpectedFrameTime;
         CurrentTimerCounter = SDL_GetPerformanceCounter();
@@ -415,7 +454,7 @@ SDL_AppResult SDL_AppIterate(void* AppState)
         GameSoundBuffer.SampleCountToOutput = SamplesToWrite;
         GameSoundBuffer.Samples = Samples;
         
-        GameGetSoundSample(&ApplicationState->GameMemory, &GameSoundBuffer);
+        ApplicationState->GameCode.GameGetSoundSample(&ApplicationState->GameMemory, &GameSoundBuffer);
 
 
         int BytesToWrite = SamplesToWrite * Channels * sizeof(int16_t);
@@ -457,7 +496,8 @@ void SDL_AppQuit(void* AppState, SDL_AppResult result)
 {
     sdl_application_state* ApplicationState = (sdl_application_state*) AppState;
 
-    SDL_free(ApplicationState->SoundOutput.Memory);
+    SDL_UnloadObject(ApplicationState->GameCode.Object);
+
     SDL_DestroyAudioStream(ApplicationState->AudioStream);
     
     SDL_DestroySurface(ApplicationState->Buffer.Surface);

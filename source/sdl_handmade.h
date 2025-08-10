@@ -25,6 +25,14 @@ struct sdl_sound_output {
     circular_buffer Buffer = {};
 };
 
+struct sdl_game_code {
+    game_update_and_render* GameUpdateAndRender = &GameUpdateAndRenderStub;
+    game_get_sound_sample* GameGetSoundSample = &GameGetSoundSampleStub;
+    SDL_SharedObject* Object = NULL;
+
+    bool IsValid = false;
+};
+
 struct sdl_application_state {
     bool AppIsRunning = true;
     bool GlobalPause  = false;
@@ -42,10 +50,10 @@ struct sdl_application_state {
     game_memory GameMemory = {};
 
     SDL_AudioStream* AudioStream = NULL;
-    sdl_sound_output SoundOutput = {};
 
-    int AudioAdditional = 0;
-    int AudioTotal = 0;
+    sdl_game_code GameCode = {};
 };
+
+
 
 #endif
