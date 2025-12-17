@@ -15,12 +15,15 @@
 
 
 
+using memory_handle = uint64_t;
+
 struct game_offscreen_buffer 
 {
   void*      Data;
   int        Width;
   int        Height;
   int        Pitch;
+  int        BytesPerPixel;
 };
 
 struct game_sound_output_buffer
@@ -92,6 +95,9 @@ struct game_state
   unsigned ToneHz = 260;
   float Angle = 0.0f;
   unsigned Volume = 4000;
+
+  int PlayerX = 100;
+  int PlayerY = 100;
 };
 
 
@@ -117,11 +123,16 @@ typedef DEBUG_PLATFORM_FREE_FILE_MEMORY(debug_platform_free_file_memory);
 
 struct game_memory
 {
-  void* PermanentStorage = NULL;
+  memory_handle PermanentStorage = 0;
   uint64_t PermanentStorageSize = 0;
 
-  void* TransientStorage = NULL;
+  memory_handle TransientStorage = 0;
   uint64_t TransientStorageSize = 0;
+
+
+  void* (*GetPtr) (memory_handle) = NULL;
+  memory_handle (*GetHandle) (void*) = NULL;
+
 
 #ifdef HANDMADE_INTERNAL
   debug_platform_read_entire_file* DEBUGPlatformReadEntireFile = NULL;

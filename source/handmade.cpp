@@ -87,11 +87,28 @@ RenderWeirdRectangle(game_offscreen_buffer* Buffer, int XOffset, int YOffset)
   }
 }
 
+internal_func void
+RenderPlayer(game_offscreen_buffer* Buffer, int PlayerX, int PlayerY)
+{
+    if (PlayerX < 0 || PlayerX + 10 >= Buffer->Width) return;
+    if (PlayerY < 0 || PlayerY + 10 >= Buffer->Height) return;
+    int32_t Color = 0xffffffff;
+    for (int Y = PlayerY; Y < PlayerY + 10; ++Y) {
+        int8_t* Pixels = (int8_t*) Buffer->Data + (Y * Buffer->Pitch + PlayerX * Buffer->BytesPerPixel);
+
+        for (int X = 0; X < 10; ++X) {
+            int32_t* Pixel = (int32_t*) Pixels;
+            *Pixel = Color;
+            Pixels += Buffer->BytesPerPixel;
+        }
+    }
+}
+
 extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
   HANDMADE_ASSERT(Memory->PermanentStorageSize >= sizeof(game_state));
 
-  game_state* GameState = (game_state*) (Memory->PermanentStorage);
+  game_state* GameState = (game_state*) (Memory->GetPtr(Memory->PermanentStorage));
   if (!GameState->IsInitialized)
   {
     GameState->IsInitialized = true;
@@ -102,12 +119,12 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     GameState->Volume = 4000;
 
     debug_file_result Result;
-    if (Memory->DEBUGPlatformReadEntireFile(__FILE__, &Result))
-    {
-      char const* TempOutFile = "W:\\handmade-hero\\temp.out";
-      Memory->DEBUGPlatformWriteEntireFile(TempOutFile, Result.Memory, Result.Size);
-      Memory->DEBUGPlatformFreeFileMemory(&Result);
-    }
+    /* if (Memory->DEBUGPlatformReadEntireFile(__FILE__, &Result)) */
+    /* { */
+    /*   char const* TempOutFile = "W:\\handmade-hero\\temp.out"; */
+    /*   Memory->DEBUGPlatformWriteEntireFile(TempOutFile, Result.Memory, Result.Size); */
+    /*   Memory->DEBUGPlatformFreeFileMemory(&Result); */
+    /* } */
   }
 
 
@@ -143,8 +160,21 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         GameState->YOffset -= 10;
         GameState->ToneHz -= 5;
       }
+      if (Controller->ActionLeft.EndedDown) {
+          GameState->PlayerX += -10;
+      }
+      if (Controller->ActionRight.EndedDown) {
+          GameState->PlayerX += 10;
+      }
+      if (Controller->ActionUp.EndedDown) {
+          GameState->PlayerY += -10;
+      }
+      if (Controller->ActionDown.EndedDown) {
+          GameState->PlayerY += 10;
+      }
     }
   }
+
 
   if (GameState->ToneHz < 65) {
     GameState->ToneHz = 65;
@@ -153,10 +183,11 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   }
 
   RenderWeirdRectangle(Buffer, GameState->XOffset, GameState->YOffset);
+  RenderPlayer(Buffer, GameState->PlayerX, GameState->PlayerY);
 }
 
 extern "C" GAME_GET_SOUND_SAMPLE(GameGetSoundSample)
 {
-      game_state* GameState = (game_state*) (Memory->PermanentStorage);
+      game_state* GameState = (game_state*) (Memory->GetPtr(Memory->PermanentStorage));
       GameOutputSound(SoundBuffer, GameState);
 }

@@ -15,12 +15,14 @@ g++ \
     -I../source \
     ../source/handmade.cpp \
     -fpic -shared \
-    -o libhandmade.so
+    -o libhandmade_before.so
 
 if [ $? -ne 0 ]; then
     echo "ERROR: Compile" >&2
     exit 1
 fi
+
+mv libhandmade_before.so libhandmade.so
 
 g++ \
     ${DFLAGS} \

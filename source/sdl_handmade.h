@@ -26,11 +26,24 @@ struct sdl_sound_output {
 };
 
 struct sdl_game_code {
+    SDL_SharedObject* Object = NULL;
+    SDL_Time DllLastWriteTime;
+    
     game_update_and_render* GameUpdateAndRender = &GameUpdateAndRenderStub;
     game_get_sound_sample* GameGetSoundSample = &GameGetSoundSampleStub;
-    SDL_SharedObject* Object = NULL;
 
     bool IsValid = false;
+};
+
+struct sdl_record_state
+{
+    uint64_t      MemoryStartAddress = 0;
+    uint64_t      MemorySize = 0;
+    void*         MemoryBlock = NULL;
+    SDL_IOStream* RecordingStream = NULL;
+    SDL_IOStream* PlaybackStream  = NULL;
+    int RecordingIndex = 0;
+    int PlaybackIndex = 0;
 };
 
 struct sdl_application_state {
@@ -52,7 +65,16 @@ struct sdl_application_state {
     SDL_AudioStream* AudioStream = NULL;
 
     sdl_game_code GameCode = {};
+    char* SourceGameCodeDllFullPath = NULL;
+    char* TmpGameCodeDllFullPath = NULL;
+
+
+    SDL_Storage* UserStorage = NULL;
+    SDL_Storage* GameStorage = NULL;
+
+    sdl_record_state RecordingState;
 };
+
 
 
 
